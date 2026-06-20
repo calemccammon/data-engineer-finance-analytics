@@ -2,6 +2,8 @@
 
 > A full end-to-end ELT data pipeline pulling real stock market data from Yahoo Finance, loading it into DuckDB, transforming it with dbt, testing it with custom data quality rules, and orchestrating it all with Dagster — running entirely on your local machine.
 
+![Dashboard screenshot](capture.png)
+
 ---
 
 ## What This Project Demonstrates
@@ -204,7 +206,7 @@ Mixed frequencies are forward-filled in `int_macro_context` so every trading day
 ```bash
 # 1. Clone and enter the project
 git clone <your-repo>
-cd data-engineer-sanbox
+cd data-engineer-finance-analytics
 
 # 2. Create the virtual environment and install dependencies
 uv sync
@@ -235,7 +237,7 @@ uv run python main.py transform
 ### Option B — Dagster UI (recommended)
 
 ```bash
-dagster dev -m orchestrate -p 3001
+uv run dagster dev -m orchestrate -p 3001
 # Opens http://localhost:3001
 ```
 
@@ -267,7 +269,7 @@ dbt docs serve --profiles-dir .
 ```bash
 cd dashboard
 npm run sources   # query DuckDB and cache results
-npm run dev       # opens http://localhost:3002
+npm run dev       # opens http://localhost:3000
 ```
 
 Pages:
