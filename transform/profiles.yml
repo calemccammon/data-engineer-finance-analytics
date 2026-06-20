@@ -6,7 +6,7 @@ finance_analytics:
 
     local:
       type: duckdb
-      path: "{{ env_var('FINANCE_DB_PATH') }}"
+      path: "{{ env_var('FINANCE_DB_PATH', 'data/processed/finance.duckdb') }}"
       schema: main
       threads: 4
 
