@@ -35,6 +35,7 @@ jobs:
       - name: dbt compile (syntax check — no data required)
         working-directory: transform
         run: |
+          mkdir -p ../data/processed
           uv run dbt deps
           uv run dbt compile --profiles-dir .
         env:
