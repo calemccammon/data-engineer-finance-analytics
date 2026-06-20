@@ -14,7 +14,7 @@ finance_analytics:
       type: bigquery
       method: service-account
       project: "{{ env_var('BQ_PROJECT', '') }}"
-      dataset: finance_marts
+      dataset: finance
       keyfile: "{{ env_var('BQ_KEYFILE', '') }}"
       location: US
       threads: 4

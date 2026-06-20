@@ -343,13 +343,14 @@ To change the tickers, edit `DEFAULT_TICKERS` in `extract/stock_prices.py`.
 
 ## CI / GitHub Actions
 
-The pipeline includes a two-job CI workflow (`.github/workflows/ci.yml`):
+The pipeline includes three GitHub Actions workflows:
 
-| Job | Triggers on | What it does |
+| Workflow | Triggers on | What it does |
 |---|---|---|
-| **Lint & Unit Tests** | Every PR and push | `pytest tests/` + `dbt compile` (syntax check, no data needed) |
-| **Full Pipeline** | Push to `main` only | Full extract → load → `dbt seed` → `dbt run` → `dbt test` |
-| **Deploy Dashboard** | Push to `main` (dashboard or model changes) | Queries BigQuery → builds Evidence static site → deploys to GitHub Pages |
+| **CI** (`ci.yml`) — Lint & Unit Tests | Every PR and push | `pytest tests/` + `dbt compile` (syntax check, no data needed) |
+| **CI** (`ci.yml`) — Full Pipeline | Push to `main` only | Full extract → load → `dbt seed` → `dbt run` → `dbt test` (DuckDB) |
+| **Deploy Dashboard** (`deploy-dashboard.yml`) | Push to `main` | Queries existing BigQuery data → builds Evidence static site → deploys to GitHub Pages |
+| **Refresh Data & Deploy** (`refresh-and-deploy.yml`) | Manual trigger only | Full ELT to BigQuery → AI briefing → builds and deploys dashboard |
 
 To enable:
 1. Add these secrets in **Repository → Settings → Secrets and variables → Actions**:
@@ -388,5 +389,7 @@ dbt picks up `TARGET` → sets `DBT_TARGET=bigquery` → uses the `bigquery` out
 | Dataset | Contents |
 |---|---|
 | `raw` | Raw tables loaded from Parquet |
-| `finance_marts` | dbt-transformed mart tables |
+| `finance_staging` | dbt staging models |
+| `finance_intermediate` | dbt intermediate models |
+| `finance_marts` | dbt mart tables (fact + dimensions) |
 
