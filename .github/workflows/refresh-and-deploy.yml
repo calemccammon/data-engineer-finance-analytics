@@ -34,7 +34,7 @@ jobs:
         run: uv python install
 
       - name: Install dependencies
-        run: uv sync
+        run: uv sync --group cloud
 
       # ── GCP Authentication ────────────────────────────────────────────────────
       - name: Write GCP service account credentials
