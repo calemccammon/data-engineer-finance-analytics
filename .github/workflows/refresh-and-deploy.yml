@@ -68,6 +68,7 @@ jobs:
           uv run dbt test --profiles-dir . --target bigquery
         env:
           BQ_PROJECT: ${{ secrets.BQ_PROJECT }}
+          BQ_KEYFILE: /tmp/gcp-key.json
           GOOGLE_APPLICATION_CREDENTIALS: /tmp/gcp-key.json
           FINANCE_DB_PATH: /tmp/dummy.duckdb
 
