@@ -1,0 +1,166 @@
+version: 2
+
+sources:
+  - name: raw
+    schema: raw
+    description: "Raw data loaded from Yahoo Finance API"
+    # Freshness: warn if data is >25 hours old, error if >49 hours old.
+    # This catches a missed daily pipeline run before downstream consumers notice.
+    freshness:
+      warn_after: {count: 25, period: hour}
+      error_after: {count: 49, period: hour}
+    loaded_at_field: extracted_at
+
+    tables:
+      - name: raw_stock_prices
+        description: "Raw historical OHLCV stock price data"
+        columns:
+          - name: date
+            description: "Trading date"
+            data_type: timestamp
+            tests:
+              - not_null
+          - name: ticker
+            description: "Stock ticker symbol (e.g. AAPL)"
+            data_type: varchar
+            tests:
+              - not_null
+          - name: open
+            description: "Opening price"
+            data_type: double
+            tests:
+              - not_null
+          - name: high
+            description: "Intraday high price"
+            data_type: double
+            tests:
+              - not_null
+          - name: low
+            description: "Intraday low price"
+            data_type: double
+            tests:
+              - not_null
+          - name: close
+            description: "Closing price"
+            data_type: double
+            tests:
+              - not_null
+          - name: volume
+            description: "Number of shares traded"
+            data_type: bigint
+            tests:
+              - not_null
+          - name: extracted_at
+            description: "Timestamp when this record was extracted from the API"
+            data_type: varchar
+            tests:
+              - not_null
+
+      - name: raw_company_info
+        description: "Company metadata including sector, industry, and market cap"
+        columns:
+          - name: ticker
+            description: "Stock ticker symbol"
+            data_type: varchar
+            tests:
+              - not_null
+              - unique
+          - name: company_name
+            description: "Full legal company name"
+            data_type: varchar
+          - name: sector
+            description: "GICS sector classification"
+            data_type: varchar
+          - name: market_cap
+            description: "Market capitalization in USD"
+            data_type: bigint
+          - name: extracted_at
+            description: "Timestamp when this record was extracted from the API"
+            data_type: varchar
+            tests:
+              - not_null
+
+      - name: raw_economic_indicators
+        description: "Macroeconomic indicator data from the FRED API (Federal Reserve Bank of St. Louis)"
+        # FRED data is monthly/quarterly — override the source-level 25h threshold
+        # to avoid spurious freshness warnings on data that legitimately updates slowly.
+        freshness:
+          warn_after: {count: 40, period: day}
+          error_after: {count: 60, period: day}
+        columns:
+          - name: series_id
+            description: "FRED series identifier (e.g. FEDFUNDS, CPIAUCSL)"
+            data_type: varchar
+            tests:
+              - not_null
+          - name: observation_date
+            description: "Date of the observation"
+            data_type: date
+            tests:
+              - not_null
+          - name: value
+            description: "Observed value for the series on this date"
+            data_type: double
+          - name: frequency
+            description: "Reporting frequency: daily, weekly, monthly, quarterly, or annual"
+            data_type: varchar
+          - name: extracted_at
+            description: "Timestamp when this record was extracted"
+            data_type: varchar
+            tests:
+              - not_null
+
+models:
+  - name: stg_stock_prices
+    description: "Cleaned and standardized daily stock prices. One row per ticker per trading day."
+    columns:
+      - name: price_id
+        description: "Surrogate key: ticker + trading_date"
+        tests:
+          - unique
+          - not_null
+      - name: ticker
+        description: "Stock ticker symbol"
+        tests:
+          - not_null
+      - name: trading_date
+        description: "The trading date"
+        tests:
+          - not_null
+      - name: open_price
+        description: "Opening price for the day"
+      - name: high_price
+        description: "Highest price during the day"
+      - name: low_price
+        description: "Lowest price during the day"
+      - name: close_price
+        description: "Closing price for the day"
+      - name: volume
+        description: "Number of shares traded"
+
+  - name: stg_company_info
+    description: "Cleaned company metadata. One row per company."
+    columns:
+      - name: ticker
+        description: "Stock ticker symbol"
+        tests:
+          - unique
+          - not_null
+
+  - name: stg_economic_indicators
+    description: |
+      Cleaned FRED macroeconomic indicator data in long format.
+      Grain: one row per (series_id, observation_date).
+    columns:
+      - name: series_id
+        description: "FRED series identifier"
+        tests:
+          - not_null
+      - name: observation_date
+        description: "Date of the observation"
+        tests:
+          - not_null
+      - name: value
+        description: "Observed value — units vary by series (%, index level, etc.)"
+      - name: frequency
+        description: "Inferred reporting frequency: daily / monthly / quarterly"

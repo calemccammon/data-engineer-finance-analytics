@@ -1,0 +1,110 @@
+version: 2
+
+models:
+  - name: int_daily_returns
+    description: |
+      Intermediate model calculating daily price returns per ticker.
+      Adds simple daily return, log return, and overnight gap columns.
+      Grain: one row per ticker per trading day.
+    columns:
+      - name: price_id
+        description: "Surrogate key inherited from stg_stock_prices"
+        tests:
+          - unique
+          - not_null
+      - name: ticker
+        description: "Stock ticker symbol"
+        tests:
+          - not_null
+      - name: trading_date
+        description: "Trading date"
+        tests:
+          - not_null
+      - name: close_price
+        description: "Closing price"
+      - name: prev_close_price
+        description: "Previous trading day closing price (null for first record)"
+      - name: daily_return_pct
+        description: "Simple daily return: (close - prev_close) / prev_close * 100"
+      - name: log_return_pct
+        description: "Logarithmic daily return: ln(close / prev_close) * 100. Preferred for statistical aggregation."
+      - name: overnight_gap_pct
+        description: "Gap between today's open and previous day's close, as a percentage"
+
+  - name: int_moving_averages
+    description: |
+      Intermediate model computing rolling moving averages and momentum signals.
+      Grain: one row per ticker per trading day.
+    columns:
+      - name: price_id
+        description: "Surrogate key"
+        tests:
+          - unique
+          - not_null
+      - name: ticker
+        description: "Stock ticker symbol"
+      - name: sma_7d
+        description: "7-day simple moving average of close price"
+      - name: sma_30d
+        description: "30-day simple moving average of close price"
+      - name: sma_90d
+        description: "90-day simple moving average of close price"
+      - name: sma_200d
+        description: "200-day simple moving average of close price"
+      - name: avg_volume_20d
+        description: "20-day average daily trading volume"
+      - name: relative_volume_20d
+        description: "Today's volume relative to the prior 20-day average. Values >1 indicate above-average activity."
+      - name: high_52w
+        description: "Highest closing price in the trailing 52 weeks (~252 trading days)"
+      - name: low_52w
+        description: "Lowest closing price in the trailing 52 weeks"
+      - name: price_position_52w
+        description: "Price position within the 52-week range (0 = at low, 1 = at high)"
+
+  - name: int_macro_context
+    description: |
+      Daily macro context derived from FRED economic indicators.
+      Mixed-frequency FRED data (daily/monthly/quarterly) is forward-filled
+      to produce one row per trading date, ready to join to fct_daily_trading.
+      Grain: one row per calendar date present in stg_stock_prices.
+    columns:
+      - name: calendar_date
+        description: "Trading date (FK to fct_daily_trading.trading_date)"
+        tests:
+          - unique
+          - not_null
+      - name: fed_funds_rate
+        description: "Federal Funds Effective Rate (%)"
+      - name: cpi
+        description: "Consumer Price Index, All Urban Consumers"
+      - name: unemployment_rate
+        description: "Civilian Unemployment Rate (%)"
+      - name: treasury_yield_10y
+        description: "10-Year Treasury Constant Maturity Rate (%)"
+      - name: gdp_growth_rate
+        description: "Real GDP Growth Rate (%, quarterly, forward-filled to daily)"
+      - name: breakeven_inflation_10y
+        description: "10-Year Breakeven Inflation Rate (%)"
+      - name: real_yield_10y
+        description: "Real 10-Year yield: treasury_yield_10y minus breakeven_inflation_10y"
+
+  - name: int_volatility
+    description: |
+      Intermediate model computing realized volatility from log returns.
+      Annualized using sqrt(252) — the standard convention for daily data.
+      Grain: one row per ticker per trading day.
+    columns:
+      - name: price_id
+        description: "Surrogate key"
+        tests:
+          - unique
+          - not_null
+      - name: ticker
+        description: "Stock ticker symbol"
+      - name: volatility_20d_annualized
+        description: "Annualized 20-day realized volatility. Expressed as a percentage (e.g., 25.0 = 25% annualized vol)."
+      - name: volatility_60d_annualized
+        description: "Annualized 60-day realized volatility"
+      - name: avg_intraday_range_pct_20d
+        description: "20-day average of daily high–low range as a fraction of close price (percentage)"

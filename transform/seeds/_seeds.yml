@@ -1,0 +1,29 @@
+version: 2
+
+seeds:
+  - name: sp500_companies
+    description: |
+      Static reference list of S&P 500 companies used for enriching pipeline data.
+      Contains sector/industry classifications and approximate index weights.
+      This seed can be joined to fact tables as an alternative or supplement to
+      the live dim_company dimension when API data is unavailable.
+    columns:
+      - name: ticker
+        description: "Stock ticker symbol (primary key)"
+        tests:
+          - unique
+          - not_null
+      - name: company_name
+        description: "Full company name"
+        tests:
+          - not_null
+      - name: sector
+        description: "GICS sector"
+        tests:
+          - not_null
+      - name: industry
+        description: "GICS industry group"
+      - name: index_weight_pct
+        description: "Approximate S&P 500 index weight as a percentage"
+      - name: added_date
+        description: "Date the company was added to the S&P 500"

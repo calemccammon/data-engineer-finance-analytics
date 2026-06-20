@@ -1,0 +1,31 @@
+ticker,company_name,sector,industry,index_weight_pct,added_date
+AAPL,Apple Inc.,Information Technology,Technology Hardware Storage & Peripherals,7.13,1982-12-12
+MSFT,Microsoft Corporation,Information Technology,Systems Software,6.89,1994-06-01
+NVDA,NVIDIA Corporation,Information Technology,Semiconductors,6.20,2001-11-30
+AMZN,Amazon.com Inc.,Consumer Discretionary,Broadline Retail,3.96,2005-11-18
+META,Meta Platforms Inc.,Communication Services,Interactive Media & Services,2.54,2013-12-23
+GOOGL,Alphabet Inc. Class A,Communication Services,Interactive Media & Services,2.16,2014-04-03
+GOOG,Alphabet Inc. Class C,Communication Services,Interactive Media & Services,1.83,2014-04-03
+BRK.B,Berkshire Hathaway Inc. Class B,Financials,Multi-Sector Holdings,1.79,1976-01-01
+LLY,Eli Lilly and Company,Health Care,Pharmaceuticals,1.72,1970-01-01
+AVGO,Broadcom Inc.,Information Technology,Semiconductors,1.69,2009-08-06
+JPM,JPMorgan Chase & Co.,Financials,Diversified Banks,1.51,1975-06-01
+TSLA,Tesla Inc.,Consumer Discretionary,Automobile Manufacturers,1.41,2020-12-21
+WMT,Walmart Inc.,Consumer Staples,Consumer Staples Merchandise Retail,1.25,1982-08-31
+XOM,Exxon Mobil Corporation,Energy,Integrated Oil & Gas,1.18,1957-03-04
+V,Visa Inc. Class A,Financials,Transaction & Payment Processing Services,1.15,2009-03-19
+UNH,UnitedHealth Group Incorporated,Health Care,Managed Health Care,1.13,1994-07-01
+MA,Mastercard Incorporated Class A,Financials,Transaction & Payment Processing Services,1.03,2006-05-25
+COST,Costco Wholesale Corporation,Consumer Staples,Consumer Staples Merchandise Retail,0.99,1993-10-01
+HD,The Home Depot Inc.,Consumer Discretionary,Home Improvement Retail,0.98,1988-03-28
+PG,Procter & Gamble Company,Consumer Staples,Household Products,0.97,1957-03-04
+JNJ,Johnson & Johnson,Health Care,Pharmaceuticals,0.94,1973-06-30
+NFLX,Netflix Inc.,Communication Services,Movies & Entertainment,0.93,2010-12-20
+CRM,Salesforce Inc.,Information Technology,Application Software,0.80,2008-09-15
+BAC,Bank of America Corporation,Financials,Diversified Banks,0.78,1976-01-01
+ORCL,Oracle Corporation,Information Technology,Application Software,0.77,1989-08-16
+KO,The Coca-Cola Company,Consumer Staples,Soft Drinks & Non-alcoholic Beverages,0.74,1957-03-04
+AMD,Advanced Micro Devices Inc.,Information Technology,Semiconductors,0.73,2017-03-20
+PEP,PepsiCo Inc.,Consumer Staples,Soft Drinks & Non-alcoholic Beverages,0.70,1957-03-04
+TMO,Thermo Fisher Scientific Inc.,Health Care,Life Sciences Tools & Services,0.69,2004-07-30
+ABBV,AbbVie Inc.,Health Care,Biotechnology,0.69,2013-01-02

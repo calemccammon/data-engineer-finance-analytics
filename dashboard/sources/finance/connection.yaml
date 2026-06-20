@@ -1,0 +1,4 @@
+name: finance
+type: duckdb
+options:
+  filename: ../../../data/processed/finance.duckdb

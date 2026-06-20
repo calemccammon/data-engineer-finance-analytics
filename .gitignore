@@ -1,0 +1,42 @@
+# Python
+__pycache__/
+*.py[oc]
+build/
+dist/
+wheels/
+*.egg-info
+
+# Virtual environments
+.venv
+
+# Data files (local data lake)
+data/raw/
+data/processed/
+data/exports/
+
+# dbt
+transform/target/
+transform/dbt_packages/
+transform/logs/
+
+# DuckDB
+*.duckdb
+*.duckdb.wal
+
+# IDE
+.vscode/
+.idea/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Dagster
+orchestrate/storage/
+.tmp_dagster_home_*/
+
+# Secrets
+.env
+
+# Internal planning artifacts
+implementation_plan.md

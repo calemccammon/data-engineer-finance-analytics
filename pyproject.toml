@@ -1,0 +1,30 @@
+[project]
+name = "finance-analytics-pipeline"
+version = "0.1.0"
+description = "End-to-end ELT pipeline: Yahoo Finance + FRED → DuckDB → dbt → Dagster → Evidence"
+readme = "README.md"
+requires-python = ">=3.14"
+dependencies = [
+    "dbt-core>=1.11.11",
+    "dbt-duckdb>=1.10.1",
+    "duckdb>=1.5.4",
+    "fredapi>=0.5.2",
+    "pandas>=3.0.3",
+    "python-dotenv>=1.0.0",
+    "yfinance>=1.4.1",
+]
+
+[dependency-groups]
+dev = [
+    "pytest>=8.0",
+]
+orchestrate = [
+    "dagster>=1.9",
+    "dagster-webserver>=1.9",
+]
+cloud = [
+    "google-genai>=1.0",
+    "google-cloud-bigquery>=3.0",
+    "google-cloud-bigquery-storage>=2.0",
+    "pyarrow>=15.0",
+]

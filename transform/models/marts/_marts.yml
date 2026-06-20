@@ -1,0 +1,100 @@
+version: 2
+
+models:
+  - name: fct_daily_trading
+    description: |
+      Fact table for daily stock trading activity.
+      Combines price data with company metadata, daily returns, moving averages, and volatility.
+      Grain: one row per ticker per trading day.
+    columns:
+      - name: price_id
+        description: "Surrogate key: ticker + trading_date"
+        tests:
+          - unique
+          - not_null
+      - name: ticker
+        description: "Stock ticker symbol"
+        tests:
+          - not_null
+      - name: trading_date
+        description: "Trading date"
+        tests:
+          - not_null
+      - name: close_price
+        description: "Closing price for the day"
+        tests:
+          - not_null
+      - name: volume
+        description: "Number of shares traded"
+      - name: sector
+        description: "Company sector (from dim_company)"
+      - name: prev_close_price
+        description: "Previous trading day closing price"
+      - name: daily_return_pct
+        description: "Simple daily return as a percentage"
+      - name: log_return_pct
+        description: "Log daily return — preferred for statistical analysis"
+      - name: sma_7d
+        description: "7-day simple moving average of close price"
+      - name: sma_30d
+        description: "30-day simple moving average of close price"
+      - name: sma_90d
+        description: "90-day simple moving average of close price"
+      - name: volatility_20d_annualized
+        description: "Annualized 20-day realized volatility (standard deviation of log returns * sqrt(252))"
+
+  - name: dim_company
+    description: |
+      Dimension table containing company reference data.
+      Grain: one row per ticker symbol.
+    columns:
+      - name: company_key
+        description: "Surrogate key for the company"
+        tests:
+          - unique
+          - not_null
+      - name: ticker
+        description: "Stock ticker symbol"
+        tests:
+          - unique
+          - not_null
+      - name: company_name
+        description: "Full legal company name"
+      - name: sector
+        description: "GICS sector classification"
+      - name: industry
+        description: "GICS industry classification"
+      - name: market_cap
+        description: "Market capitalization in USD"
+      - name: market_cap_category
+        description: "Bucketed market cap category (Mega/Large/Mid/Small/Micro)"
+      - name: currency
+        description: "Trading currency"
+      - name: exchange
+        description: "Stock exchange code"
+      - name: country
+        description: "Country of incorporation"
+
+  - name: dim_date
+    description: |
+      Date dimension covering all calendar days from 2020 onwards.
+      Includes trading day flags, fiscal quarter labels, and relative period flags.
+      Grain: one row per calendar day.
+    columns:
+      - name: calendar_date
+        description: "Calendar date (PK)"
+        tests:
+          - unique
+          - not_null
+      - name: year
+        description: "Calendar year"
+      - name: month_num
+        description: "Month number (1–12)"
+      - name: quarter_num
+        description: "Quarter number (1–4)"
+      - name: is_trading_day
+        description: "True if this date has trading data in the dataset"
+      - name: is_weekend
+        description: "True for Saturdays and Sundays"
+      - name: fiscal_quarter_label
+        description: "Human-readable quarter label, e.g. 2024-Q1"
