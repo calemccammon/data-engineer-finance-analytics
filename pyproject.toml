@@ -3,7 +3,7 @@ name = "finance-analytics-pipeline"
 version = "0.1.0"
 description = "End-to-end ELT pipeline: Yahoo Finance + FRED → DuckDB → dbt → Dagster → Evidence"
 readme = "README.md"
-requires-python = ">=3.14"
+requires-python = ">=3.13"
 dependencies = [
     "dbt-core>=1.11.11",
     "dbt-duckdb>=1.10.1",

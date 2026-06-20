@@ -30,7 +30,7 @@ This is a portfolio project built to show data engineering fundamentals across t
 
 | Layer | Tool | Why |
 |---|---|---|
-| Language | Python 3.14 | Industry standard for data engineering |
+| Language | Python 3.13 | Industry standard for data engineering |
 | Database | DuckDB (local) / BigQuery (cloud) | DuckDB for local dev; BigQuery for production |
 | Transformation | dbt-core + dbt-duckdb / dbt-bigquery | Industry-standard SQL transformation framework |
 | Orchestration | Dagster | Modern orchestrator with a great local dev UI |
