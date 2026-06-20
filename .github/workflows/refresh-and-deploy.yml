@@ -63,13 +63,13 @@ jobs:
         working-directory: transform
         run: |
           uv run dbt deps
-          uv run dbt seed --profiles-dir .
-          uv run dbt run --profiles-dir .
-          uv run dbt test --profiles-dir .
+          uv run dbt seed --profiles-dir . --target bigquery
+          uv run dbt run --profiles-dir . --target bigquery
+          uv run dbt test --profiles-dir . --target bigquery
         env:
-          TARGET: bigquery
           BQ_PROJECT: ${{ secrets.BQ_PROJECT }}
           GOOGLE_APPLICATION_CREDENTIALS: /tmp/gcp-key.json
+          FINANCE_DB_PATH: /tmp/dummy.duckdb
 
       # ── AI Market Briefing ────────────────────────────────────────────────────
       - name: Generate AI market briefing
