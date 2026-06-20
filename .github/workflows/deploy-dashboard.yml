@@ -3,10 +3,6 @@ name: Deploy Dashboard to GitHub Pages
 on:
   push:
     branches: [main]
-    paths:
-      - 'dashboard/**'           # Dashboard content changed
-      - 'transform/models/**'    # dbt models changed (data shape may differ)
-      - '.github/workflows/deploy-dashboard.yml'
   workflow_dispatch:             # Allow manual trigger from GitHub UI
 
 # Required for GitHub Pages deployment
