@@ -46,7 +46,8 @@ select
     count(*) as trading_days
 from finance.price_history
 where ticker = '${inputs.ticker.value}'
-  and trading_date >= (select max(trading_date) - interval '365 days' from finance.price_history)
+  and trading_date >= (select max(trading_date) - 365 from finance.price_history)
+group by ticker
 ```
 
 # {inputs.ticker.value} — Stock Deep Dive

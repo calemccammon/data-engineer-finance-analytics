@@ -5,10 +5,10 @@ with ranked as (
     select
         ticker,
         close_price,
-        date_trunc('month', trading_date) as month_start,
-        row_number() over (partition by ticker, date_trunc('month', trading_date) order by trading_date asc)  as rn_asc,
-        row_number() over (partition by ticker, date_trunc('month', trading_date) order by trading_date desc) as rn_desc,
-        count(*) over (partition by ticker, date_trunc('month', trading_date)) as trading_days
+        trading_date - (cast(extract(day from trading_date) as integer) - 1) as month_start,
+        row_number() over (partition by ticker, trading_date - (cast(extract(day from trading_date) as integer) - 1) order by trading_date asc)  as rn_asc,
+        row_number() over (partition by ticker, trading_date - (cast(extract(day from trading_date) as integer) - 1) order by trading_date desc) as rn_desc,
+        count(*) over (partition by ticker, trading_date - (cast(extract(day from trading_date) as integer) - 1)) as trading_days
     from main_marts.fct_daily_trading
 )
 
