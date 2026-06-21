@@ -96,17 +96,12 @@ jobs:
       - name: Configure BigQuery data source
         working-directory: dashboard/sources/finance
         run: |
-          CLIENT_EMAIL=$(echo '${{ secrets.GOOGLE_CREDENTIALS }}' | jq -r '.client_email')
-          PRIVATE_KEY=$(echo '${{ secrets.GOOGLE_CREDENTIALS }}' | jq -r '.private_key')
-          echo "::add-mask::${CLIENT_EMAIL}"
-          echo "::add-mask::${PRIVATE_KEY}"
           cat > connection.yaml << EOF
           name: finance
           type: bigquery
           options:
             project_id: ${{ secrets.BQ_PROJECT }}
-            client_email: ${CLIENT_EMAIL}
-            private_key: "${PRIVATE_KEY}"
+            authenticator: gcloud-cli
           EOF
 
       - name: Rewrite schema prefix for BigQuery
