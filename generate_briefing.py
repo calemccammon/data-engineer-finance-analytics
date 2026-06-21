@@ -136,7 +136,7 @@ def _run_queries(con, bigquery: bool = False) -> dict:
             ) AS return_52w_pct
         FROM main_marts.fct_daily_trading
         WHERE trading_date >= (
-            SELECT MAX(trading_date) - INTERVAL '365 days'
+            SELECT MAX(trading_date) - 365
             FROM main_marts.fct_daily_trading
         )
         QUALIFY ROW_NUMBER() OVER (PARTITION BY ticker ORDER BY trading_date DESC) = 1
