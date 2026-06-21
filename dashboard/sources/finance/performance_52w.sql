@@ -12,7 +12,7 @@ with ranked as (
         row_number() over (partition by ticker order by trading_date asc)  as rn_asc,
         row_number() over (partition by ticker order by trading_date desc) as rn_desc
     from main_marts.fct_daily_trading
-    where trading_date >= (select max(trading_date) - interval '365 days' from main_marts.fct_daily_trading)
+    where trading_date >= (select max(trading_date) - 365 from main_marts.fct_daily_trading)
 )
 
 select
