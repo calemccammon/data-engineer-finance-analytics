@@ -94,6 +94,7 @@ jobs:
         working-directory: dashboard
         env:
           BASE_PATH: '/${{ github.event.repository.name }}'
+          EVIDENCE_BUILD_DIR: './build/${{ github.event.repository.name }}'
         run: npm run build
 
       # ── GitHub Pages Deployment ───────────────────────────────────────────
