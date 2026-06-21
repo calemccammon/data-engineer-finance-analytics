@@ -2,3 +2,4 @@ name: finance
 type: bigquery
 options:
   project_id: REPLACED_BY_CI
+  keyFilename: REPLACED_BY_CI

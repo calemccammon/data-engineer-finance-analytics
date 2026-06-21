@@ -101,6 +101,7 @@ jobs:
           type: bigquery
           options:
             project_id: ${{ secrets.BQ_PROJECT }}
+            keyFilename: /tmp/gcp-key.json
           EOF
 
       - name: Rewrite schema prefix for BigQuery

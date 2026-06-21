@@ -72,6 +72,7 @@ jobs:
           type: bigquery
           options:
             project_id: ${{ secrets.BQ_PROJECT }}
+            keyFilename: /tmp/gcp-key.json
           EOF
 
       # Rewrite DuckDB schema prefix (main_marts.) to BigQuery dataset (finance_marts.)
