@@ -115,8 +115,7 @@ jobs:
       - name: Build Evidence static site
         working-directory: dashboard
         env:
-          BASE_PATH: '/${{ github.event.repository.name }}'
-          EVIDENCE_BUILD_DIR: './build/${{ github.event.repository.name }}'
+          EVIDENCE_BUILD_DIR: './build/data-engineer-finance-analytics'
         run: npm run build
 
       # ── GitHub Pages Deployment ───────────────────────────────────────────────

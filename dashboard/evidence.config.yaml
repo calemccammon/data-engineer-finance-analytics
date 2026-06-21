@@ -2,6 +2,9 @@ appearance:
   default: system
   switcher: true
 
+deployment:
+  basePath: /data-engineer-finance-analytics
+
 theme:
   colorPalettes:
     default:
