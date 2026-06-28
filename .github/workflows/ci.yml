@@ -90,3 +90,81 @@ jobs:
           name: finance-duckdb-debug
           path: data/processed/finance.duckdb
           retention-days: 3
+
+  # ── Job 3: Playwright presentation tests — runs after full pipeline ──────────
+  dashboard-tests:
+    name: Dashboard Presentation Tests
+    runs-on: ubuntu-latest
+    needs: full-pipeline
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v4
+        with:
+          version: "latest"
+
+      - name: Set up Python
+        run: uv python install
+
+      - name: Install dependencies
+        run: uv sync
+
+      - name: Create data directories
+        run: mkdir -p data/raw data/processed
+
+      - name: Extract & Load
+        run: |
+          uv run python main.py extract
+          uv run python main.py load
+        env:
+          FRED_API_KEY: ${{ secrets.FRED_API_KEY }}
+
+      - name: dbt seed + run
+        working-directory: transform
+        run: |
+          uv run dbt deps
+          uv run dbt seed --profiles-dir .
+          uv run dbt run --profiles-dir .
+        env:
+          FINANCE_DB_PATH: ${{ github.workspace }}/data/processed/finance.duckdb
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: dashboard/package-lock.json
+
+      - name: Install Evidence dependencies
+        working-directory: dashboard
+        run: npm ci
+
+      - name: Pull data from DuckDB into Evidence
+        working-directory: dashboard
+        run: npm run sources
+
+      - name: Build Evidence static site
+        working-directory: dashboard
+        env:
+          EVIDENCE_BUILD_DIR: './build/data-engineer-finance-analytics'
+        run: npm run build
+
+      - name: Install Playwright + Chromium
+        working-directory: dashboard
+        run: |
+          npm install --no-save @playwright/test
+          npx playwright install --with-deps chromium
+
+      - name: Run Playwright presentation tests
+        working-directory: dashboard
+        run: npx playwright test
+
+      - name: Upload Playwright report
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-report
+          path: dashboard/playwright-report/
+          retention-days: 3

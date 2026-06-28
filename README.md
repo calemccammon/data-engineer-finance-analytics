@@ -37,7 +37,7 @@ This is a portfolio project built to show data engineering fundamentals across t
 | Data Source | Yahoo Finance (yfinance) + FRED Federal Reserve | Free, real market & economic data |
 | Visualization | Evidence | Markdown-based BI — SQL + charts, no drag-and-drop |
 | AI | Gemini 2.5 Flash (Google AI Studio) | LLM-generated market briefing at deploy time |
-| Testing | pytest + dbt test | Unit tests for Python, schema/quality tests for SQL |
+| Testing | pytest + dbt test + Playwright | Unit tests for Python, schema/quality tests for SQL, smoke tests for the dashboard UI |
 | CI/CD | GitHub Actions | Tests on every PR; auto-deploys dashboard to GitHub Pages |
 
 ---
@@ -161,7 +161,10 @@ data-engineer-finance-analytics/
 │   │   ├── briefing.md          # AI Market Briefing (Gemini-generated)
 │   │   ├── stocks/index.md      # Stock deep dive with ticker dropdown
 │   │   └── macro/index.md       # FRED indicators + rate regime analysis
-│   └── sources/finance/         # SQL queries against DuckDB/BigQuery
+│   ├── sources/finance/         # SQL queries against DuckDB/BigQuery
+│   ├── tests/                   # Playwright smoke tests for the dashboard UI
+│   │   └── dashboard.spec.js
+│   └── playwright.config.js
 │
 ├── generate_briefing.py         # AI briefing generator (Gemini 2.5 Flash)
 │
@@ -349,6 +352,7 @@ The pipeline includes three GitHub Actions workflows:
 |---|---|---|
 | **CI** (`ci.yml`) — Lint & Unit Tests | Every PR and push | `pytest tests/` + `dbt compile` (syntax check, no data needed) |
 | **CI** (`ci.yml`) — Full Pipeline | Push to `main` only | Full extract → load → `dbt seed` → `dbt run` → `dbt test` (DuckDB) |
+| **CI** (`ci.yml`) — Dashboard Tests | Push to `main` only | Builds Evidence against DuckDB → runs Playwright smoke tests against the static site |
 | **Deploy Dashboard** (`deploy-dashboard.yml`) | Push to `main` | Queries existing BigQuery data → builds Evidence static site → deploys to GitHub Pages |
 | **Refresh Data & Deploy** (`refresh-and-deploy.yml`) | Manual trigger only | Full ELT to BigQuery → AI briefing → builds and deploys dashboard |
 

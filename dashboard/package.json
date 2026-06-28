@@ -8,7 +8,8 @@
     "test": "evidence build",
     "sources": "evidence sources",
     "sources:strict": "evidence sources --strict",
-    "preview": "evidence preview"
+    "preview": "evidence preview",
+    "test:e2e": "playwright test"
   },
   "engines": {
     "npm": ">=7.0.0",
