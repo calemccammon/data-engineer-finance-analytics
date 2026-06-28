@@ -110,6 +110,9 @@ jobs:
         uses: actions/deploy-pages@v4
 
       # ── Post-deployment smoke tests ───────────────────────────────────────
+      - name: Wait for GitHub Pages CDN to propagate
+        run: sleep 15
+
       - name: Install Playwright + Chromium
         working-directory: dashboard
         run: |
