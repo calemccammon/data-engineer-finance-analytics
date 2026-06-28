@@ -22,17 +22,20 @@ test.describe('Home page', () => {
     await page.waitForLoadState('networkidle');
 
     await expect(page.getByRole('heading', { name: /52-Week/i }).first()).toBeVisible();
-    // Scope to main to skip icon SVGs in the navigation
-    await expect(page.locator('main svg').first()).toBeVisible();
+    // Icon SVGs have Tailwind size classes (w-4, w-5, etc.); chart SVGs do not
+    await expect(page.locator('main svg:not([class*="w-"])').first()).toBeVisible({ timeout: 10000 });
   });
 
   test("renders today's snapshot table with data rows", async ({ page }) => {
     await page.goto(`${BASE}/`);
     await page.waitForLoadState('networkidle');
 
+    // Evidence DataTable briefly sets visibility:hidden during column measurement;
+    // scrolling into view and allowing extra time lets it settle
     const table = page.locator('main table').first();
-    await expect(table).toBeVisible();
-    await expect(table.locator('tbody tr')).not.toHaveCount(0);
+    await table.scrollIntoViewIfNeeded();
+    await expect(table).toBeVisible({ timeout: 15000 });
+    await expect(table.locator('tbody tr').first()).toBeVisible();
   });
 
   test('renders sector performance section', async ({ page }) => {
@@ -61,7 +64,7 @@ test.describe('Macro page', () => {
     await page.waitForLoadState('networkidle');
 
     await expect(page.getByRole('heading', { name: /Interest Rate/i }).first()).toBeVisible();
-    await expect(page.locator('main svg').first()).toBeVisible();
+    await expect(page.locator('main svg:not([class*="w-"])').first()).toBeVisible({ timeout: 10000 });
   });
 
   test('renders rate regime bar chart and data table', async ({ page }) => {
@@ -70,8 +73,9 @@ test.describe('Macro page', () => {
 
     await expect(page.getByRole('heading', { name: /Rate Regime/i }).first()).toBeVisible();
     const table = page.locator('main table').first();
-    await expect(table).toBeVisible();
-    await expect(table.locator('tbody tr')).not.toHaveCount(0);
+    await table.scrollIntoViewIfNeeded();
+    await expect(table).toBeVisible({ timeout: 15000 });
+    await expect(table.locator('tbody tr').first()).toBeVisible();
   });
 });
 
@@ -92,7 +96,7 @@ test.describe('Stocks page', () => {
     await page.waitForLoadState('networkidle');
 
     await expect(page.getByRole('heading', { name: /Price History/i }).first()).toBeVisible();
-    await expect(page.locator('main svg').first()).toBeVisible();
+    await expect(page.locator('main svg:not([class*="w-"])').first()).toBeVisible({ timeout: 10000 });
   });
 
   test('renders monthly returns table with data rows', async ({ page }) => {
@@ -101,20 +105,19 @@ test.describe('Stocks page', () => {
 
     await expect(page.getByRole('heading', { name: /Monthly Returns/i }).first()).toBeVisible();
     const table = page.locator('main table').first();
-    await expect(table).toBeVisible();
-    await expect(table.locator('tbody tr')).not.toHaveCount(0);
+    await table.scrollIntoViewIfNeeded();
+    await expect(table).toBeVisible({ timeout: 15000 });
+    await expect(table.locator('tbody tr').first()).toBeVisible();
   });
 
   test('ticker dropdown changes displayed content', async ({ page }) => {
     await page.goto(`${BASE}/stocks`);
     await page.waitForLoadState('networkidle');
 
-    // Open the Melt UI combobox
+    // Open Melt UI combobox, wait for listbox, select MSFT by text
     await page.locator('[role="combobox"]').first().click();
-    // Wait for options to appear, then click MSFT
-    const msftOption = page.locator('[role="option"]').filter({ hasText: 'MSFT' });
-    await msftOption.waitFor({ timeout: 5000 });
-    await msftOption.click();
+    await page.getByRole('listbox').waitFor({ timeout: 5000 });
+    await page.getByRole('listbox').getByText('MSFT').click();
     await page.waitForLoadState('networkidle');
 
     await expect(page.locator('[role="combobox"]').first()).toContainText('MSFT');
@@ -133,6 +136,7 @@ test.describe('Briefing page', () => {
     await expect(content).toBeVisible();
   });
 });
+
 
 
 
