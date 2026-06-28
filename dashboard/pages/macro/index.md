@@ -82,7 +82,7 @@ How did the 10 tracked stocks perform during different Federal Funds Rate enviro
     x=rate_regime
     y=avg_daily_return
     title="Average Daily Return by Rate Regime"
-    yFmt="+0.000%"
+    yFmt="+0.000%;-0.000%"
     colorColumn=avg_daily_return
     colorScale={['#dc2626','#4ade80']}
     labels=true
@@ -90,7 +90,7 @@ How did the 10 tracked stocks perform during different Federal Funds Rate enviro
 
 <DataTable data={regime_perf}>
     <Column id=rate_regime title="Rate Regime" />
-    <Column id=avg_daily_return title="Avg Daily Return %" fmt="+0.000%" contentType=delta />
+    <Column id=avg_daily_return title="Avg Daily Return %" fmt="+0.000%;-0.000%" contentType=delta />
     <Column id=std_daily_return title="Std Dev %" fmt="0.000%" />
     <Column id=observations />
 </DataTable>

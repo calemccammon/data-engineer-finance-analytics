@@ -59,7 +59,7 @@ group by ticker
 
 <BigValue data={stats} value=low_52w title="52W Low" fmt="$#,##0.00" />
 <BigValue data={stats} value=high_52w title="52W High" fmt="$#,##0.00" />
-<BigValue data={stats} value=avg_daily_return title="Avg Daily Return" fmt="+0.000%" />
+<BigValue data={stats} value=avg_daily_return title="Avg Daily Return" fmt="+0.000%;-0.000%" />
 <BigValue data={stats} value=trading_days title="Trading Days" />
 
 ---
@@ -96,7 +96,7 @@ group by ticker
     x=trading_date
     y=daily_return_pct
     title="{inputs.ticker.value} Daily Return (%)"
-    yFmt="+0.00%"
+    yFmt="+0.00%;-0.00%"
     colorColumn=daily_return_pct
     colorScale={['#dc2626','#4ade80']}
 />
@@ -107,7 +107,7 @@ group by ticker
 
 <DataTable data={monthly}>
     <Column id=month fmt="MMM yyyy" />
-    <Column id=monthly_return_pct title="Return %" fmt="+0.00%" contentType=delta />
+    <Column id=monthly_return_pct title="Return %" fmt="+0.00%;-0.00%" contentType=delta />
     <Column id=trading_days />
 </DataTable>
 
