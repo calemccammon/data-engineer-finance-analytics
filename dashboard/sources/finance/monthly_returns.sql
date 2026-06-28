@@ -1,6 +1,7 @@
 -- Monthly return heatmap data
 -- Uses MAX(CASE WHEN rn=1 THEN ... END) instead of first()/last() to stay
 -- compatible with both DuckDB (local) and BigQuery (cloud dashboard).
+-- Returns are expressed as decimals (e.g. 0.05 = 5%) for Evidence % formatting.
 with ranked as (
     select
         ticker,
@@ -17,8 +18,8 @@ select
     month_start                                                     as month,
     round(
         (max(case when rn_desc = 1 then close_price end) /
-         max(case when rn_asc  = 1 then close_price end) - 1) * 100,
-        2
+         max(case when rn_asc  = 1 then close_price end) - 1),
+        4
     ) as monthly_return_pct,
     max(trading_days) as trading_days
 from ranked

@@ -1,4 +1,5 @@
 -- Latest snapshot per ticker with performance metrics
+-- Percentage values divided by 100 so Evidence's % format displays correctly.
 select
     f.ticker,
     f.company_name,
@@ -6,13 +7,13 @@ select
     c.industry,
     c.market_cap_category,
     c.exchange,
-    f.close_price                                              as latest_close,
-    f.daily_return_pct,
+    f.close_price                                                    as latest_close,
+    f.daily_return_pct            / 100.0                            as daily_return_pct,
     f.volume,
     f.sma_30d,
     f.sma_200d,
-    round(f.volatility_20d_annualized, 2)               as volatility_20d_pct,
-    f.trading_date                                             as as_of_date
+    round(f.volatility_20d_annualized / 100.0, 4)                   as volatility_20d_pct,
+    f.trading_date                                                   as as_of_date
 from main_marts.fct_daily_trading f
 join main_marts.dim_company c using (ticker)
 where f.trading_date = (select max(trading_date) from main_marts.fct_daily_trading)

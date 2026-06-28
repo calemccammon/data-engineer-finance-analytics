@@ -1,6 +1,7 @@
 -- 52-week performance leaders and laggards
 -- Uses MAX(CASE WHEN rn=1 THEN ... END) instead of first()/last() to stay
 -- compatible with both DuckDB (local) and BigQuery (cloud dashboard).
+-- Returns are expressed as decimals (e.g. 0.15 = 15%) for Evidence % formatting.
 with ranked as (
     select
         ticker,
@@ -23,11 +24,11 @@ select
     max(case when rn_desc = 1 then close_price end) as price_now,
     round(
         (max(case when rn_desc = 1 then close_price end) /
-         max(case when rn_asc  = 1 then close_price end) - 1) * 100,
-        2
+         max(case when rn_asc  = 1 then close_price end) - 1),
+        4
     ) as return_52w_pct,
-    round(avg(volatility_20d_annualized), 2) as avg_volatility_pct,
-    round(avg(volume), 0)                           as avg_daily_volume
+    round(avg(volatility_20d_annualized) / 100.0, 4) as avg_volatility_pct,
+    round(avg(volume), 0)                             as avg_daily_volume
 from ranked
 group by ticker, company_name, sector
 order by return_52w_pct desc
