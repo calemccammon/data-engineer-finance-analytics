@@ -10,19 +10,19 @@ test.describe('Home page', () => {
     await page.goto(`${BASE}/`);
     await page.waitForLoadState('networkidle');
 
-    await expect(page.locator('h1')).toBeVisible();
-    // Four BigValue metric tiles should be present
-    await expect(page.locator('text=Avg Daily Return %')).toBeVisible();
-    await expect(page.locator('text=Gainers Today')).toBeVisible();
-    await expect(page.locator('text=Losers Today')).toBeVisible();
-    await expect(page.locator('text=Stocks Tracked')).toBeVisible();
+    await expect(page.locator('h1').first()).toBeVisible();
+    // BigValue tiles — each label appears once in the tile
+    await expect(page.locator('text=Avg Daily Return %').first()).toBeVisible();
+    await expect(page.locator('text=Gainers Today').first()).toBeVisible();
+    await expect(page.locator('text=Losers Today').first()).toBeVisible();
+    await expect(page.locator('text=Stocks Tracked').first()).toBeVisible();
   });
 
   test('renders 52-week performance chart', async ({ page }) => {
     await page.goto(`${BASE}/`);
     await page.waitForLoadState('networkidle');
 
-    await expect(page.locator('text=52-Week Return by Ticker')).toBeVisible();
+    await expect(page.getByRole('heading', { name: /52-Week/i }).first()).toBeVisible();
     await expect(page.locator('svg').first()).toBeVisible();
   });
 
@@ -40,7 +40,7 @@ test.describe('Home page', () => {
     await page.goto(`${BASE}/`);
     await page.waitForLoadState('networkidle');
 
-    await expect(page.locator('text=Sector Performance')).toBeVisible();
+    await expect(page.getByRole('heading', { name: /Sector Performance/i }).first()).toBeVisible();
   });
 });
 
@@ -51,17 +51,17 @@ test.describe('Macro page', () => {
     await page.goto(`${BASE}/macro`);
     await page.waitForLoadState('networkidle');
 
-    await expect(page.locator('h1')).toBeVisible();
-    await expect(page.locator('text=Fed Funds Rate')).toBeVisible();
-    await expect(page.locator('text=10Y Treasury Yield')).toBeVisible();
-    await expect(page.locator('text=Unemployment Rate')).toBeVisible();
+    await expect(page.locator('h1').first()).toBeVisible();
+    await expect(page.locator('text=Fed Funds Rate').first()).toBeVisible();
+    await expect(page.locator('text=10Y Treasury Yield').first()).toBeVisible();
+    await expect(page.locator('text=Unemployment Rate').first()).toBeVisible();
   });
 
   test('renders interest rate chart', async ({ page }) => {
     await page.goto(`${BASE}/macro`);
     await page.waitForLoadState('networkidle');
 
-    await expect(page.locator('text=Interest Rate Environment')).toBeVisible();
+    await expect(page.getByRole('heading', { name: /Interest Rate/i }).first()).toBeVisible();
     await expect(page.locator('svg').first()).toBeVisible();
   });
 
@@ -69,7 +69,7 @@ test.describe('Macro page', () => {
     await page.goto(`${BASE}/macro`);
     await page.waitForLoadState('networkidle');
 
-    await expect(page.locator('text=Stock Returns by Rate Regime')).toBeVisible();
+    await expect(page.getByRole('heading', { name: /Rate Regime/i }).first()).toBeVisible();
     const table = page.locator('table').first();
     await expect(table).toBeVisible();
     const rows = table.locator('tbody tr');
@@ -84,14 +84,16 @@ test.describe('Stocks page', () => {
     await page.goto(`${BASE}/stocks`);
     await page.waitForLoadState('networkidle');
 
-    await expect(page.locator('text=AAPL')).toBeVisible();
+    // Evidence Dropdown renders as a combobox button
+    await expect(page.locator('[role="combobox"]').first()).toBeVisible();
+    await expect(page.locator('[role="combobox"]').first()).toContainText('AAPL');
   });
 
   test('renders price history chart', async ({ page }) => {
     await page.goto(`${BASE}/stocks`);
     await page.waitForLoadState('networkidle');
 
-    await expect(page.locator('text=Price History')).toBeVisible();
+    await expect(page.getByRole('heading', { name: /Price History/i }).first()).toBeVisible();
     await expect(page.locator('svg').first()).toBeVisible();
   });
 
@@ -99,7 +101,7 @@ test.describe('Stocks page', () => {
     await page.goto(`${BASE}/stocks`);
     await page.waitForLoadState('networkidle');
 
-    await expect(page.locator('text=Monthly Returns')).toBeVisible();
+    await expect(page.getByRole('heading', { name: /Monthly Returns/i }).first()).toBeVisible();
     const table = page.locator('table').first();
     await expect(table).toBeVisible();
     const rows = table.locator('tbody tr');
@@ -110,12 +112,12 @@ test.describe('Stocks page', () => {
     await page.goto(`${BASE}/stocks`);
     await page.waitForLoadState('networkidle');
 
-    // Change ticker and verify the heading updates
-    const dropdown = page.locator('select, [role="combobox"]').first();
-    await dropdown.selectOption('MSFT');
+    // Evidence Dropdown is a Melt UI popover — click to open, then click the option
+    await page.locator('[role="combobox"]').first().click();
+    await page.getByRole('option', { name: 'MSFT' }).click();
     await page.waitForLoadState('networkidle');
 
-    await expect(page.locator('text=MSFT')).toBeVisible();
+    await expect(page.locator('[role="combobox"]').first()).toContainText('MSFT');
   });
 });
 
@@ -132,4 +134,5 @@ test.describe('Briefing page', () => {
     await expect(content).toBeVisible();
   });
 });
+
 
