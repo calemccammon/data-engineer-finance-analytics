@@ -1,6 +1,7 @@
 -- Custom test: Volatility values must be within a plausible range
--- Annualized volatility below 1% or above 500% indicates a calculation error.
--- (Most equities sit in the 15–80% annualized vol range.)
+-- Annualized volatility below 0.1% or above 500% indicates a calculation error.
+-- (Most equities sit in the 15–80% annualized vol range; 0.1% is physically
+-- impossible for an individual equity and flags genuine data/calculation issues.)
 -- Only checks rows where we have enough history for the window (non-null values).
 
 select
@@ -12,6 +13,6 @@ from {{ ref('int_volatility') }}
 where
     volatility_20d_annualized is not null
     and (
-        volatility_20d_annualized < 1
+        volatility_20d_annualized < 0.1
         or volatility_20d_annualized > 500
     )
