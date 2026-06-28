@@ -1,9 +1,14 @@
 // @ts-check
 import { defineConfig, devices } from '@playwright/test';
 
+// When PLAYWRIGHT_BASE_URL is set (e.g. the deployed GitHub Pages URL), tests
+// run directly against that live site with no local server needed.
+// Otherwise, a local Python HTTP server is started for development/local runs.
+const liveBaseUrl = process.env.PLAYWRIGHT_BASE_URL;
+
 export default defineConfig({
   testDir: './tests',
-  fullyParallel: false, // single static server
+  fullyParallel: false,
   forbidOnly: !!process.env.CI,
   retries: process.env.CI ? 1 : 0,
   workers: 1,
@@ -12,7 +17,7 @@ export default defineConfig({
     : 'list',
 
   use: {
-    baseURL: 'http://localhost:3000',
+    baseURL: liveBaseUrl ?? 'http://localhost:3000',
     navigationTimeout: 30_000,
     trace: 'on-first-retry',
   },
@@ -24,13 +29,14 @@ export default defineConfig({
     },
   ],
 
-  webServer: {
-    // Python's built-in HTTP server — no npm package required.
-    // Run `npm run build` (with EVIDENCE_BUILD_DIR=./build/data-engineer-finance-analytics)
-    // before running these tests locally.
-    command: 'python3 -m http.server 3000 --directory ./build',
-    url: 'http://localhost:3000/data-engineer-finance-analytics/',
-    reuseExistingServer: !process.env.CI,
-    timeout: 30_000,
-  },
+  // Only spin up a local server when not testing against a live URL.
+  // For local dev: run `npm run build` first, then `npm run test:e2e`.
+  webServer: liveBaseUrl
+    ? undefined
+    : {
+        command: 'python3 -m http.server 3000 --directory ./build',
+        url: 'http://localhost:3000/data-engineer-finance-analytics/',
+        reuseExistingServer: true,
+        timeout: 30_000,
+      },
 });
