@@ -11,7 +11,6 @@ test.describe('Home page', () => {
     await page.waitForLoadState('networkidle');
 
     await expect(page.locator('h1').first()).toBeVisible();
-    // BigValue tiles — each label appears once in the tile
     await expect(page.locator('text=Avg Daily Return %').first()).toBeVisible();
     await expect(page.locator('text=Gainers Today').first()).toBeVisible();
     await expect(page.locator('text=Losers Today').first()).toBeVisible();
@@ -23,17 +22,17 @@ test.describe('Home page', () => {
     await page.waitForLoadState('networkidle');
 
     await expect(page.getByRole('heading', { name: /52-Week/i }).first()).toBeVisible();
-    await expect(page.locator('svg').first()).toBeVisible();
+    // Scope to main to skip icon SVGs in the navigation
+    await expect(page.locator('main svg').first()).toBeVisible();
   });
 
   test("renders today's snapshot table with data rows", async ({ page }) => {
     await page.goto(`${BASE}/`);
     await page.waitForLoadState('networkidle');
 
-    const table = page.locator('table').first();
+    const table = page.locator('main table').first();
     await expect(table).toBeVisible();
-    const rows = table.locator('tbody tr');
-    await expect(rows).not.toHaveCount(0);
+    await expect(table.locator('tbody tr')).not.toHaveCount(0);
   });
 
   test('renders sector performance section', async ({ page }) => {
@@ -62,7 +61,7 @@ test.describe('Macro page', () => {
     await page.waitForLoadState('networkidle');
 
     await expect(page.getByRole('heading', { name: /Interest Rate/i }).first()).toBeVisible();
-    await expect(page.locator('svg').first()).toBeVisible();
+    await expect(page.locator('main svg').first()).toBeVisible();
   });
 
   test('renders rate regime bar chart and data table', async ({ page }) => {
@@ -70,10 +69,9 @@ test.describe('Macro page', () => {
     await page.waitForLoadState('networkidle');
 
     await expect(page.getByRole('heading', { name: /Rate Regime/i }).first()).toBeVisible();
-    const table = page.locator('table').first();
+    const table = page.locator('main table').first();
     await expect(table).toBeVisible();
-    const rows = table.locator('tbody tr');
-    await expect(rows).not.toHaveCount(0);
+    await expect(table.locator('tbody tr')).not.toHaveCount(0);
   });
 });
 
@@ -84,9 +82,9 @@ test.describe('Stocks page', () => {
     await page.goto(`${BASE}/stocks`);
     await page.waitForLoadState('networkidle');
 
-    // Evidence Dropdown renders as a combobox button
-    await expect(page.locator('[role="combobox"]').first()).toBeVisible();
-    await expect(page.locator('[role="combobox"]').first()).toContainText('AAPL');
+    const combobox = page.locator('[role="combobox"]').first();
+    await expect(combobox).toBeVisible();
+    await expect(combobox).toContainText('AAPL');
   });
 
   test('renders price history chart', async ({ page }) => {
@@ -94,7 +92,7 @@ test.describe('Stocks page', () => {
     await page.waitForLoadState('networkidle');
 
     await expect(page.getByRole('heading', { name: /Price History/i }).first()).toBeVisible();
-    await expect(page.locator('svg').first()).toBeVisible();
+    await expect(page.locator('main svg').first()).toBeVisible();
   });
 
   test('renders monthly returns table with data rows', async ({ page }) => {
@@ -102,19 +100,21 @@ test.describe('Stocks page', () => {
     await page.waitForLoadState('networkidle');
 
     await expect(page.getByRole('heading', { name: /Monthly Returns/i }).first()).toBeVisible();
-    const table = page.locator('table').first();
+    const table = page.locator('main table').first();
     await expect(table).toBeVisible();
-    const rows = table.locator('tbody tr');
-    await expect(rows).not.toHaveCount(0);
+    await expect(table.locator('tbody tr')).not.toHaveCount(0);
   });
 
   test('ticker dropdown changes displayed content', async ({ page }) => {
     await page.goto(`${BASE}/stocks`);
     await page.waitForLoadState('networkidle');
 
-    // Evidence Dropdown is a Melt UI popover — click to open, then click the option
+    // Open the Melt UI combobox
     await page.locator('[role="combobox"]').first().click();
-    await page.getByRole('option', { name: 'MSFT' }).click();
+    // Wait for options to appear, then click MSFT
+    const msftOption = page.locator('[role="option"]').filter({ hasText: 'MSFT' });
+    await msftOption.waitFor({ timeout: 5000 });
+    await msftOption.click();
     await page.waitForLoadState('networkidle');
 
     await expect(page.locator('[role="combobox"]').first()).toContainText('MSFT');
@@ -129,10 +129,10 @@ test.describe('Briefing page', () => {
     await page.waitForLoadState('networkidle');
 
     await expect(page.locator('body')).toBeVisible();
-    // Either a briefing or the "not generated yet" placeholder should be present
     const content = page.locator('text=/briefing|market|No briefing/i').first();
     await expect(content).toBeVisible();
   });
 });
+
 
 
