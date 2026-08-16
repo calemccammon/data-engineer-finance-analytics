@@ -23,6 +23,7 @@ This is a portfolio project built to show data engineering fundamentals across t
 | **CI/CD** | GitHub Actions | dbt tests + pytest on every commit; auto-deploys dashboard to GitHub Pages |
 | **Cloud migration** | BigQuery | Drop-in replacement for DuckDB via a single `TARGET` env var |
 | **AI commentary** | Gemini 2.5 Flash | LLM-generated market briefing injected into the dashboard at deploy time |
+| **LLM grounding checks** | Every figure in the briefing is verified against the source data before publishing; unverifiable output is retried once, then withheld |
 
 ---
 
@@ -37,7 +38,7 @@ This is a portfolio project built to show data engineering fundamentals across t
 | Data Source | Yahoo Finance (yfinance) + FRED Federal Reserve | Free, real market & economic data |
 | Visualization | Evidence | Markdown-based BI — SQL + charts, no drag-and-drop |
 | AI | Gemini 2.5 Flash (Google AI Studio) | LLM-generated market briefing at deploy time |
-| Testing | pytest + dbt test + Playwright | Unit tests for Python, schema/quality tests for SQL, smoke tests for the dashboard UI |
+| Testing | pytest + dbt test + Playwright | Unit tests for Python, schema/quality tests for SQL, smoke tests for the dashboard UI, grounding checks for the AI briefing |
 | CI/CD | GitHub Actions | Tests on every PR; auto-deploys dashboard to GitHub Pages |
 
 ---
@@ -167,6 +168,7 @@ data-engineer-finance-analytics/
 │   └── playwright.config.js
 │
 ├── generate_briefing.py         # AI briefing generator (Gemini 2.5 Flash)
+├── briefing_checks.py           # Grounding checks — verifies the briefing against the data
 │
 ├── tests/                       # Python unit tests (pytest)
 │   ├── test_extraction.py
@@ -300,6 +302,43 @@ Source freshness is also monitored — dbt will warn if data is older than 25 ho
 
 ---
 
+## Grounding the AI Briefing
+
+The briefing is written by a language model and published to a dashboard, which means
+a hallucinated number would go out as fact. Data quality tests protect the warehouse;
+these protect the prose.
+
+The key point is that **no second model call is needed to check the first one**. The
+briefing is generated from a structured metrics dict, so that dict *is* the ground
+truth, already in memory. Verification is therefore deterministic, free, and offline —
+no judge model, no labelled dataset.
+
+Three checks run on every generated briefing (`briefing_checks.py`):
+
+| Check | What It Catches |
+|---|---|
+| **Numeric grounding** | A figure that traces to nothing the model was given — a fabricated price, return, or rate |
+| **Superlatives** | Naming the wrong top gainer or worst performer |
+| **Direction** | Saying a ticker rose when it fell |
+
+Figures are matched at the precision they are written, so "up 2.1%" is accepted for a
+true value of 2.145% while 7.8% is not. Rate spreads are accepted in points or basis
+points, since that is the one derivation an analyst always writes.
+
+**When a check fails**, the briefing is sent back to the model once with the specific
+violations named, which fixes most of them. If the second attempt also fails, a
+deterministic briefing built straight from the warehouse is published instead, with a
+banner saying so — the dashboard stays current without carrying a claim the data does
+not support. `--strict` fails the build rather than falling back.
+
+Two limits worth stating plainly. These checks verify *grounding*, not quality: a
+briefing can pass every check and still be bland or draw a weak conclusion. And a claim
+made without numbers ("sentiment is deteriorating") is not checkable this way. The
+tuning surface is the label list — phrases like "52-week high" contain digits that are
+names rather than claims, and an unlisted one becomes a false positive.
+
+---
+
 ## Financial Metrics Computed
 
 | Metric | Model | Description |
@@ -341,6 +380,7 @@ To change the tickers, edit `DEFAULT_TICKERS` in `extract/stock_prices.py`.
 - **Data contracts** — explicit column types on source tables catch schema drift early
 - **Software-defined assets** — Dagster tracks *what* was computed and *when*, enabling precise reruns
 - **CI/CD** — GitHub Actions runs tests automatically; no broken code merges to main
+- **LLM grounding** — model output is verified against its own inputs, retried with the failures, then withheld rather than published unverified
 
 ---
 
