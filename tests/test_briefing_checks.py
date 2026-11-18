@@ -7,6 +7,7 @@ string, which is the whole point of keeping them separate from generation.
 import pytest
 
 from briefing_checks import (
+    check_attribution,
     check_briefing,
     check_directions,
     check_numbers,
@@ -166,10 +167,57 @@ def test_flags_the_wrong_worst_performer(data):
 
 
 def test_reads_a_52_week_superlative_against_the_52_week_data(data):
-    """XOM is worst over 52 weeks; it is also worst on the day, so use a case
-    where the two differ would require different data -- here they agree, and
-    the yearly branch must still resolve to XOM rather than erroring."""
-    assert check_superlatives("Over the 52-week period XOM was the worst performer.", data) == []
+    """Make AAPL the worst over 52 weeks while XOM stays the worst on the day,
+    so the two horizons give different answers."""
+    data["performance_52w"][1]["return_52w_pct"] = -20.0
+    assert check_superlatives("Over the 52-week period AAPL was the worst performer.", data) == []
+
+    violations = check_superlatives("Over the 52-week period XOM was the worst performer.", data)
+    assert len(violations) == 1
+    assert "52-week" in violations[0].detail and "AAPL" in violations[0].detail
+
+    assert check_superlatives("XOM was the worst performer on the day.", data) == []
+
+
+# ── Attribution ───────────────────────────────────────────────────────────────
+
+def test_accepts_a_tickers_own_figures(data):
+    text = "NVDA rose 2.145% to $178.32, with volatility at 41.2% and a 64.3% gain over the year."
+    assert check_attribution(text, data) == []
+
+
+def test_flags_another_tickers_figure(data):
+    """$178.32 is NVDA's close, so it is grounded but does not belong to AAPL."""
+    violations = check_attribution("AAPL closed at $178.32.", data)
+    assert len(violations) == 1
+    assert violations[0].kind == "misattributed_number"
+    assert "AAPL" in violations[0].detail and "178.32" in violations[0].detail
+
+
+def test_attribution_accepts_market_wide_figures_beside_a_ticker(data):
+    text = "NVDA led as 2 of 3 names advanced, with the Fed funds rate at 4.5% and Technology up 1.329%."
+    assert check_attribution(text, data) == []
+
+
+def test_attribution_skips_sentences_naming_two_tickers(data):
+    assert check_attribution("NVDA rose 2.145% while XOM fell 1.23%.", data) == []
+
+
+def test_attribution_skips_sentences_naming_another_company(data):
+    """The 1.23% belongs to Exxon, which is named without its ticker."""
+    assert check_attribution("NVDA was the top gainer while Exxon fell 1.23%.", data) == []
+
+
+def test_attribution_leaves_ungrounded_figures_to_the_numeric_check(data):
+    assert check_attribution("NVDA gained 7.8% today.", data) == []
+    result = check_briefing("NVDA gained 7.8% today.", data)
+    assert [v.kind for v in result.violations] == ["unverified_number"]
+
+
+def test_a_misattributed_figure_fails_the_briefing(data):
+    result = check_briefing("AAPL closed at $178.32.", data)
+    assert not result.ok
+    assert [v.kind for v in result.violations] == ["misattributed_number"]
 
 
 # ── Direction ─────────────────────────────────────────────────────────────────
@@ -216,6 +264,14 @@ def test_a_briefing_with_a_fabricated_number_and_a_wrong_leader_fails(data):
     assert "unverified_number" in kinds
     assert "wrong_superlative" in kinds
     assert not result.ok
+
+
+def test_an_empty_response_fails(data):
+    """A blank or missing response must not be published as verified."""
+    for text in ("", "   \n", None):
+        result = check_briefing(text, data)
+        assert not result.ok
+        assert result.violations[0].kind == "empty_briefing"
 
 
 def test_summary_reads_differently_either_way(data):

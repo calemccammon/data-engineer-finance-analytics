@@ -6,8 +6,8 @@ the pipeline from local development to production.
 
 Prerequisites
 ─────────────
-1. Install the BigQuery client:
-       uv add google-cloud-bigquery google-cloud-bigquery-storage pyarrow
+1. Install the BigQuery client (the "cloud" dependency group):
+       uv sync --group cloud
 
 2. Create a GCP service account with roles:
        - BigQuery Data Editor
@@ -51,7 +51,7 @@ def _get_bq_client():
         from google.oauth2 import service_account
     except ImportError as e:
         raise ImportError(
-            "google-cloud-bigquery is not installed. Run: uv add google-cloud-bigquery pyarrow"
+            "google-cloud-bigquery is not installed. Run: uv sync --group cloud"
         ) from e
 
     project = os.environ.get("BQ_PROJECT")

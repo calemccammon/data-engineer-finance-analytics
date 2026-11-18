@@ -1,8 +1,5 @@
 """Unit tests for the loading module."""
 
-import tempfile
-from pathlib import Path
-
 import duckdb
 import pandas as pd
 import pytest
@@ -113,6 +110,21 @@ def test_load_is_idempotent(raw_dir, db_path):
     count = con.execute("SELECT COUNT(*) FROM raw.raw_stock_prices").fetchone()[0]
     con.close()
 
+    assert count == 3
+
+
+def test_load_uses_finance_db_path_when_no_path_is_given(raw_dir, tmp_path, monkeypatch):
+    """Without an explicit db_path the loader writes where FINANCE_DB_PATH points,
+    which is the file dbt reads."""
+    env_db = tmp_path / "from_env" / "finance.duckdb"
+    monkeypatch.setenv("FINANCE_DB_PATH", str(env_db))
+
+    load_to_duckdb(raw_dir=raw_dir)
+
+    assert env_db.exists()
+    con = duckdb.connect(str(env_db))
+    count = con.execute("SELECT COUNT(*) FROM raw.raw_stock_prices").fetchone()[0]
+    con.close()
     assert count == 3
 
 

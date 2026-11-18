@@ -20,7 +20,7 @@ cp .env.example .env         # then set FRED_API_KEY in .env
 (cd transform && uv run dbt deps)   # installs dbt_utils
 ```
 
-Run all commands below from the repository root. The extract and load modules write to `data/raw/` and `data/processed/finance.duckdb` relative to the working directory.
+Run all commands below from the repository root. The extract modules write Parquet files to `data/raw/` relative to the working directory. The DuckDB file is `data/processed/finance.duckdb`, or the path in `FINANCE_DB_PATH` if that is set.
 
 ### Pipeline CLI
 
@@ -223,7 +223,7 @@ The schedules run only while a Dagster instance is running and after they have b
 
 | Workflow | Trigger | Steps |
 |---|---|---|
-| `ci.yml`, job "Lint & Unit Tests" | Push or pull request to `main` | `pytest tests/`, then `dbt deps` and `dbt compile` |
+| `ci.yml`, job "Unit Tests & dbt Compile" | Push or pull request to `main` | `pytest tests/`, then `dbt deps` and `dbt compile` |
 | `ci.yml`, job "Full Pipeline + dbt Tests" | Push to `main` | Extract, load into DuckDB, `dbt seed`, `dbt run`, `dbt test` |
 | `deploy-dashboard.yml` | Push to `main`, or manual | Generate the briefing from BigQuery, build Evidence against BigQuery, deploy to GitHub Pages, run Playwright against the deployed URL |
 | `refresh-and-deploy.yml` | Manual | Extract, load to BigQuery, `dbt seed`, `run` and `test` on BigQuery, then the same briefing, build, deploy and Playwright steps |
@@ -243,35 +243,37 @@ GitHub Pages must be set to deploy from GitHub Actions.
 
 `generate_briefing.py` queries the latest trading day from `fct_daily_trading`, builds a prompt containing each ticker's close, daily return, 20-day volatility and 52-week position, the sector averages, six macro values and the 52-week best and worst performers, and sends it to `gemini-2.5-flash`.
 
-The response is then checked by `briefing_checks.py` against the same metrics dict the prompt was built from. Because the inputs are already in memory, the check needs no second model call and no labelled data. It is three deterministic functions over the generated text:
+The response is then checked by `briefing_checks.py` against the same metrics dict the prompt was built from. Because the inputs are already in memory, the check needs no second model call and no labelled data. It is four deterministic functions over the generated text:
 
 | Check | Rule |
 |---|---|
 | Numeric grounding | Every number in the text must equal some value the prompt contained, at the precision it is written. "2.1%" is accepted for a source value of 2.145. |
+| Attribution | In a sentence that names exactly one ticker and no other tracked company, a number must be one of that ticker's own values or a market-wide value (sector, macro, counts). Another ticker's close or return is rejected. |
 | Superlatives | A sentence that contains a phrase such as "top gainer" or "worst performer" and names a ticker must name the ticker that is the actual extreme, by daily return or by 52-week return. |
 | Direction | A sentence that names exactly one ticker and uses only rising words or only falling words must agree with the sign of that ticker's daily return. |
 
 The set of accepted values is built from the columns the prompt shows, not from every column queried, so a figure counts as grounded only if the model could have read it. The set also includes absolute values (so "fell 1.23%" matches −1.23), the counts of tickers, gainers, losers and sectors, and the difference between each pair of macro rates in points and in basis points. No other derived figure is accepted. Dates, list numbering and labels such as "52-week" or "10-year" are stripped before numbers are extracted.
 
-If any check fails, the prompt is sent once more with the violations listed. There is one retry and no loop: each attempt costs a call, and a second failure after the specific figures were named is unlikely to be fixed by a third. If the retry also fails, the script writes a briefing rendered directly from the metrics, with a warning banner saying the model's version was withheld. With `--strict` it exits non-zero and writes nothing. The deploy workflows do not pass `--strict`.
+An empty response fails. If any check fails, the prompt is sent once more with the violations listed. There is one retry and no loop: each attempt costs a call, and a second failure after the specific figures were named is unlikely to be fixed by a third. If the retry also fails, the script writes a briefing rendered directly from the metrics, with a warning banner saying the model's version was withheld. With `--strict` it exits non-zero and writes nothing. The deploy workflows do not pass `--strict`.
 
 ### What the checks do not catch
 
-- A number is matched against one pooled set of values. It is not tied to a ticker or a metric. A correct figure attached to the wrong company, or a volatility figure described as a return, passes.
+- A number is tied to a ticker only in sentences that name a single ticker. In a sentence with two or more tickers, or one that names another company without its ticker, a correct figure attached to the wrong company passes.
+- A number is never tied to a metric. A ticker's volatility described as its return passes.
 - A whole number is accepted if any source value lies within 0.5 of it. Integers from 1900 to 2100 are treated as years and skipped.
 - The superlative check passes when the correct ticker appears anywhere in the sentence. It does not look at company names without a ticker, at sectors, or at superlatives about anything other than return.
 - The direction check skips sentences with two or more tickers and sentences that mix rising and falling words. It always compares against the daily return, including in sentences about the 52-week period. Statements about the direction of rates or other macro series are not checked, and the data holds only one day of macro values to check them against.
-- A claim made without digits ("sentiment is deteriorating") is not checked, and neither is any interpretation or forecast. A response with no figures passes.
+- A claim made without digits ("sentiment is deteriorating") is not checked, and neither is any interpretation or forecast. A response that contains text but no figures passes.
 - The checks also reject some true statements: a derived figure other than a rate spread, a numeric range written with a hyphen, or a label that is missing from `_LABEL_PATTERNS` (for example "52 weeks").
 
 The checks establish that the figures in the briefing came from the data. They say nothing about whether the analysis is sound.
 
 ## Testing
 
-`pytest tests/` runs 39 tests with no network access or credentials:
+`pytest tests/` runs 48 tests with no network access or credentials:
 
-- `tests/test_briefing_checks.py` (29) covers fact collection, number extraction, each of the three checks, and that the fallback briefing passes its own checks.
-- `tests/test_loading.py` (8) loads small Parquet fixtures into a temporary DuckDB file and checks tables, row counts and that a second load does not duplicate rows.
+- `tests/test_briefing_checks.py` (37) covers fact collection, number extraction, each of the four checks, the empty response, and that the fallback briefing passes its own checks.
+- `tests/test_loading.py` (9) loads small Parquet fixtures into a temporary DuckDB file and checks tables, row counts, that a second load does not duplicate rows, and that `FINANCE_DB_PATH` is used.
 - `tests/test_extraction.py` (2) checks the default ticker list.
 
 The extract modules, the BigQuery loader and the generate, retry and fallback flow in `generate_briefing.py` have no unit tests. They are exercised by the CI pipeline job and the deploy workflows.
@@ -299,9 +301,8 @@ The extract modules, the BigQuery loader and the generate, retry and fallback fl
 - Source freshness thresholds are declared in `transform/models/staging/_staging.yml` (warn at 25 hours and error at 49 hours for prices and company data, 40 and 60 days for FRED), but no workflow, job or script runs `dbt source freshness`.
 - The `data_type` entries on the source tables are documentation. Nothing enforces them.
 - Rolling windows have no minimum row count. The first 199 rows of `sma_200d` for a ticker are averages over fewer than 200 days, and the same applies to the other windows.
-- The ticker list is configured in one place, but `generate_briefing.py` reads the macro values from the `AAPL` row and writes "/10" into the prompt, and the overview page says "10 S&P 500 stocks". Changing the tickers means editing those too.
 - A ticker or FRED series that fails to download is logged and skipped. The run continues with the rest.
-- The macros in `transform/macros/financial_calcs.sql` (CAGR, Sharpe ratio, max drawdown, percentage change) and the `sp500_companies` seed are not referenced by any model.
+- The `sp500_companies` seed is loaded and tested but not referenced by any model.
 - `yfinance` is an unofficial client for Yahoo Finance and can break when Yahoo changes its site.
 
 ## Data attribution

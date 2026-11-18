@@ -81,6 +81,10 @@ def run_transform():
     )
     if result.exception:
         raise result.exception
+    if not result.success:
+        # A model that fails to build is a handled error: dbt sets success=False
+        # and leaves exception empty.
+        raise RuntimeError("dbt run finished with failures. See the dbt output above.")
 
 
 def main():

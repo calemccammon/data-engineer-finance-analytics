@@ -1,15 +1,14 @@
 """Software-defined assets for the Finance Analytics Pipeline.
 
 Asset graph (dependency order):
-    raw_stock_prices ──┐
-                       ├──▶ raw_tables ──▶ dbt_staging ──▶ dbt_intermediate ──▶ dbt_marts
-    raw_company_info ──┘
+    raw_stock_prices ─────────┐
+    raw_company_info ─────────┼──▶ raw_tables ──▶ dbt_seeds ──▶ dbt_staging
+    raw_economic_indicators ──┘        ──▶ dbt_intermediate ──▶ dbt_marts ──▶ dbt_tests
 
 The active warehouse target (local DuckDB or BigQuery) is controlled by the
 TARGET environment variable. All assets are warehouse-agnostic.
 """
 
-import logging
 import io
 import os
 from pathlib import Path
@@ -27,9 +26,7 @@ from dagster import (
 
 from extract.stock_prices import extract_company_info, extract_stock_prices
 from extract.economic_indicators import extract_economic_indicators
-from load.loader import DEFAULT_DB_PATH, load_to_duckdb
-
-logger = logging.getLogger(__name__)
+from load.loader import default_db_path, load_to_duckdb
 
 DBT_PROJECT_DIR = Path(__file__).parent.parent / "transform"
 FINANCE_DB_PATH = Path(__file__).parent.parent / "data" / "processed" / "finance.duckdb"
@@ -67,6 +64,10 @@ def _run_dbt(context: AssetExecutionContext, *args: str) -> str:
         context.log.info(output)
     if result.exception:
         raise result.exception
+    if not result.success:
+        # Model and test failures are handled errors: dbt sets success=False and
+        # leaves exception empty. Fail the asset so the run is not shown as green.
+        raise RuntimeError(f"dbt {' '.join(args)} finished with failures. See the log above.")
     return output
 
 
@@ -158,7 +159,7 @@ def raw_tables(context: AssetExecutionContext) -> MaterializeResult:
     else:
         loaded_tables = load_to_duckdb()
         import duckdb
-        con = duckdb.connect(str(DEFAULT_DB_PATH))
+        con = duckdb.connect(str(default_db_path()))
         row_counts = {
             t: con.execute(f"SELECT COUNT(*) FROM {t}").fetchone()[0]
             for t in loaded_tables
@@ -175,8 +176,8 @@ def raw_tables(context: AssetExecutionContext) -> MaterializeResult:
 
 # ---------------------------------------------------------------------------
 # dbt assets — one asset per dbt layer, each depending on the previous.
-# Each asset invokes dbt via the Python API (dbtRunner), demonstrating the
-# full orchestration DAG in the Dagster UI.
+# Each asset invokes dbt via the Python API (dbtRunner), so each layer is a
+# separate node in the Dagster asset graph.
 # ---------------------------------------------------------------------------
 
 
@@ -186,7 +187,7 @@ def raw_tables(context: AssetExecutionContext) -> MaterializeResult:
     description="dbt seeds: load static reference CSV files into the warehouse (e.g. sp500_companies).",
 )
 def dbt_seeds(context: AssetExecutionContext) -> MaterializeResult:
-    """Run dbt seed — loads CSV files from transform/seeds/ into DuckDB."""
+    """Run dbt seed — loads CSV files from transform/seeds/ into the warehouse."""
     stdout = _run_dbt(context, "seed")
     lines = [l for l in stdout.splitlines() if "OK" in l or "ERROR" in l or "seed" in l.lower()]
     return MaterializeResult(
@@ -200,7 +201,7 @@ def dbt_seeds(context: AssetExecutionContext) -> MaterializeResult:
     description="dbt staging models: clean 1:1 copies of raw source tables.",
 )
 def dbt_staging(context: AssetExecutionContext) -> MaterializeResult:
-    """Run dbt staging layer (stg_stock_prices, stg_company_info)."""
+    """Run dbt staging layer (stg_stock_prices, stg_company_info, stg_economic_indicators)."""
     stdout = _run_dbt(context, "run", "--select", "staging")
     lines = [l for l in stdout.splitlines() if "OK" in l or "ERROR" in l or "model" in l.lower()]
     return MaterializeResult(
@@ -211,10 +212,10 @@ def dbt_staging(context: AssetExecutionContext) -> MaterializeResult:
 @asset(
     group_name="dbt",
     deps=[dbt_staging],
-    description="dbt intermediate models: returns, moving averages, volatility.",
+    description="dbt intermediate models: returns, moving averages, volatility, macro context.",
 )
 def dbt_intermediate(context: AssetExecutionContext) -> MaterializeResult:
-    """Run dbt intermediate layer (int_daily_returns, int_moving_averages, int_volatility)."""
+    """Run dbt intermediate layer (int_daily_returns, int_moving_averages, int_volatility, int_macro_context)."""
     stdout = _run_dbt(context, "run", "--select", "intermediate")
     lines = [l for l in stdout.splitlines() if "OK" in l or "ERROR" in l or "model" in l.lower()]
     return MaterializeResult(
