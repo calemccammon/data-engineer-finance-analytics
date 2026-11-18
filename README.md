@@ -1,100 +1,160 @@
-# 📈 Finance Analytics Pipeline
+# Finance Analytics Pipeline
 
-> A full end-to-end ELT data pipeline pulling real stock market data from Yahoo Finance, loading it into DuckDB, transforming it with dbt, testing it with custom data quality rules, and orchestrating it all with Dagster — running entirely on your local machine.
+An ELT pipeline that pulls daily prices for ten US stocks from Yahoo Finance and six macroeconomic series from FRED, loads them into DuckDB or BigQuery, models them with dbt into a small star schema, and publishes an Evidence dashboard. One dashboard page is a market briefing written by Gemini, which is checked against the figures it was generated from before it is published.
+
+Published dashboard: https://calemccammon.github.io/data-engineer-finance-analytics/
 
 ![Dashboard screenshot](capture.png)
 
----
+## Running it locally
 
-## What This Project Demonstrates
+Prerequisites: Python 3.13 or later, [uv](https://docs.astral.sh/uv/), a free [FRED API key](https://fred.stlouisfed.org/docs/api/api_key.html), and Node.js 18 or later for the dashboard. Yahoo Finance needs no key.
 
-This is a portfolio project built to show data engineering fundamentals across the full stack:
+```bash
+git clone https://github.com/calemccammon/data-engineer-finance-analytics.git
+cd data-engineer-finance-analytics
 
-| Concept | How It's Shown Here |
-|---|---|
-| **ELT pattern** | Extract → raw Parquet → DuckDB raw schema → dbt transforms |
-| **Multi-source integration** | Yahoo Finance (yfinance) + FRED Federal Reserve API |
-| **Data modeling** | Star schema: `fct_daily_trading` + `dim_company` + `dim_date` |
-| **SQL window functions** | Moving averages, lag returns, rolling volatility, 52-week ranges |
-| **Mixed-frequency alignment** | Forward-filling monthly/quarterly FRED data to daily grain |
-| **dbt layering** | Staging → Intermediate → Marts with clear separation of concerns |
-| **Data quality** | 8 custom SQL tests + schema tests + source freshness checks |
-| **Data contracts** | Explicit column types declared on every source table |
-| **CI/CD** | GitHub Actions | dbt tests + pytest on every commit; auto-deploys dashboard to GitHub Pages |
-| **Cloud migration** | BigQuery | Drop-in replacement for DuckDB via a single `TARGET` env var |
-| **AI commentary** | Gemini 2.5 Flash | LLM-generated market briefing injected into the dashboard at deploy time |
-| **LLM grounding checks** | Every figure in the briefing is verified against the source data before publishing; unverifiable output is retried once, then withheld |
+uv sync                      # core dependencies and pytest
+cp .env.example .env         # then set FRED_API_KEY in .env
 
----
+(cd transform && uv run dbt deps)   # installs dbt_utils
+```
 
-## Tech Stack
+Run all commands below from the repository root. The extract and load modules write to `data/raw/` and `data/processed/finance.duckdb` relative to the working directory.
 
-| Layer | Tool | Why |
+### Pipeline CLI
+
+```bash
+uv run python main.py             # extract, load, then dbt run
+uv run python main.py extract     # Yahoo Finance and FRED to data/raw/*.parquet
+uv run python main.py load        # Parquet to the raw schema
+uv run python main.py transform   # dbt run
+```
+
+`main.py transform` runs `dbt run` only. Seeds and tests are run through dbt directly or through Dagster.
+
+### dbt
+
+```bash
+export FINANCE_DB_PATH="$PWD/data/processed/finance.duckdb"
+cd transform
+uv run dbt seed --profiles-dir .
+uv run dbt run  --profiles-dir .
+uv run dbt test --profiles-dir .
+```
+
+`FINANCE_DB_PATH` tells the dbt profile where the DuckDB file is. `main.py` and the Dagster assets set it themselves.
+
+### Dagster
+
+Dagster is in a separate dependency group.
+
+```bash
+uv sync --group orchestrate
+uv run dagster dev -m orchestrate -p 3001    # UI at http://localhost:3001
+```
+
+### Dashboard
+
+```bash
+cd dashboard
+npm ci
+npm run sources    # runs the queries in sources/finance against the DuckDB file
+npm run dev        # Evidence dev server, port 3000 by default
+```
+
+### Briefing
+
+The briefing needs the `cloud` dependency group and a `GEMINI_API_KEY` in `.env`.
+
+```bash
+uv sync --group cloud
+uv run python generate_briefing.py --dry-run   # print the prompt, the response and the check result
+uv run python generate_briefing.py             # write dashboard/pages/briefing.md
+uv run python generate_briefing.py --strict    # exit non-zero if the checks fail, write nothing
+```
+
+The committed `dashboard/pages/briefing.md` is a placeholder that this script overwrites.
+
+### BigQuery
+
+Setting `TARGET=bigquery` switches the loader, dbt and the briefing generator from DuckDB to BigQuery.
+
+```bash
+# .env
+TARGET=bigquery
+BQ_PROJECT=my-gcp-project
+BQ_KEYFILE=/path/to/service-account.json
+```
+
+```bash
+uv sync --group cloud
+uv run python main.py
+```
+
+The loader creates a `raw` dataset in the `US` location and replaces its tables on each run. dbt writes to `finance_staging`, `finance_intermediate` and `finance_marts`. The dashboard's source queries are written against the DuckDB schema name `main_marts`. The deploy workflows rewrite that prefix to `finance_marts` with `sed` and replace `connection.yaml` before building against BigQuery.
+
+## How it works
+
+```
+yfinance  ──▶ extract/stock_prices.py ─────────┐
+FRED API  ──▶ extract/economic_indicators.py ──┴──▶ data/raw/*.parquet
+                                                          │
+                 load/loader.py (DuckDB)  or  load/bigquery_loader.py (BigQuery)
+                                                          ▼
+                 raw.raw_stock_prices   raw.raw_company_info   raw.raw_economic_indicators
+                                                          │
+                                                          ▼  dbt (transform/)
+  staging        stg_stock_prices   stg_company_info   stg_economic_indicators
+  intermediate   int_daily_returns  int_moving_averages  int_volatility  int_macro_context
+  marts          fct_daily_trading  dim_company  dim_date
+                                                          │
+                         ┌────────────────────────────────┴───────────────┐
+                         ▼                                                ▼
+          dashboard/ (Evidence static site)          generate_briefing.py + briefing_checks.py
+                                                     ──▶ dashboard/pages/briefing.md
+```
+
+### Sources
+
+Yahoo Finance, through the `yfinance` library, provides about two years (730 calendar days) of daily OHLCV prices and company metadata for ten tickers: `AAPL`, `MSFT`, `GOOGL`, `AMZN`, `NVDA`, `TSLA`, `JPM`, `JNJ`, `V`, `META`. The list is `DEFAULT_TICKERS` in `extract/stock_prices.py`.
+
+FRED provides five years of six series:
+
+| Series | ID | Frequency |
 |---|---|---|
-| Language | Python 3.13 | Industry standard for data engineering |
-| Database | DuckDB (local) / BigQuery (cloud) | DuckDB for local dev; BigQuery for production |
-| Transformation | dbt-core + dbt-duckdb / dbt-bigquery | Industry-standard SQL transformation framework |
-| Orchestration | Dagster | Modern orchestrator with a great local dev UI |
-| Data Source | Yahoo Finance (yfinance) + FRED Federal Reserve | Free, real market & economic data |
-| Visualization | Evidence | Markdown-based BI — SQL + charts, no drag-and-drop |
-| AI | Gemini 2.5 Flash (Google AI Studio) | LLM-generated market briefing at deploy time |
-| Testing | pytest + dbt test + Playwright | Unit tests for Python, schema/quality tests for SQL, smoke tests for the dashboard UI, grounding checks for the AI briefing |
-| CI/CD | GitHub Actions | Tests on every PR; auto-deploys dashboard to GitHub Pages |
+| Federal Funds Rate | `FEDFUNDS` | Monthly |
+| Consumer Price Index | `CPIAUCSL` | Monthly |
+| Unemployment Rate | `UNRATE` | Monthly |
+| 10-Year Treasury Yield | `DGS10` | Daily |
+| Real GDP Growth Rate | `A191RL1Q225SBEA` | Quarterly |
+| 10-Year Breakeven Inflation | `T10YIE` | Daily |
 
----
+Each extract writes Parquet files to `data/raw/`. Each load replaces the raw tables (`CREATE OR REPLACE` in DuckDB, `WRITE_TRUNCATE` in BigQuery), so a rerun does not duplicate rows.
 
-## Architecture
+### dbt models
 
-```
-┌─────────────────────────────────────────────────────────────────────┐
-│                        EXTRACT (Python)                             │
-│  yfinance API ──▶  extract/stock_prices.py  ──▶  data/raw/*.parquet │
-│  FRED API     ──▶  extract/economic_indicators.py  ──▶         "    │
-└────────────────────────────┬────────────────────────────────────────┘
-                             │
-                             ▼
-┌─────────────────────────────────────────────────────────────────────┐
-│                         LOAD (Python)                               │
-│  data/raw/*.parquet  ──▶  load/loader.py  ──▶  DuckDB: raw schema  │
-└────────────────────────────┬────────────────────────────────────────┘
-                             │
-                             ▼
-┌─────────────────────────────────────────────────────────────────────┐
-│                      TRANSFORM (dbt)                                │
-│                                                                     │
-│  raw.raw_stock_prices    ──▶  stg_stock_prices ──┐                  │
-│  raw.raw_company_info    ──▶  stg_company_info   ├──▶ int_daily_returns
-│  raw.raw_econ_indicators ──▶  stg_econ_indicators─┤──▶ int_moving_avgs
-│                                                  └──▶ int_volatility │
-│                                               int_macro_context ──┐  │
-│                                                                   ▼  │
-│                              fct_daily_trading  dim_company dim_date │
-└────────────────────────────┬────────────────────────────────────────┘
-                             │
-                             ▼
-┌─────────────────────────────────────────────────────────────────────┐
-│                    ORCHESTRATE (Dagster)                            │
-│                                                                     │
-│  raw_stock_prices ──┐                                               │
-│  raw_company_info ──┼──▶ raw_tables ──▶ dbt_staging               │
-│  raw_econ_indic.  ──┘         ──▶ dbt_intermediate ──▶ dbt_marts   │
-│                                                     ──▶ dbt_tests   │
-│  Schedules: weekdays 11pm UTC  │  Saturday 8am UTC                  │
-└────────────────────────────┬────────────────────────────────────────┘
-                             │
-                             ▼
-┌─────────────────────────────────────────────────────────────────────┐
-│                    VISUALIZE (Evidence)                             │
-│  dashboard/  ──▶  SQL queries on DuckDB/BigQuery  ──▶  localhost:3002│
-│  Pages: Overview · Stock Deep Dive · Macro Context · AI Briefing   │
-│                                                                     │
-│  generate_briefing.py  ──▶  Gemini 2.5 Flash  ──▶  briefing.md     │
-└─────────────────────────────────────────────────────────────────────┘
-```
+Staging models are views that rename and filter the raw tables. `stg_stock_prices` drops rows with a null date, a null close or a volume of zero or less and adds a surrogate key from ticker and date.
 
----
+Intermediate models are views that hold the calculations:
 
-## Data Model
+| Metric | Model | Definition |
+|---|---|---|
+| Daily return % | `int_daily_returns` | (close − previous close) / previous close |
+| Log return % | `int_daily_returns` | ln(close / previous close) |
+| Overnight gap % | `int_daily_returns` | (open − previous close) / previous close |
+| SMA 7 / 30 / 90 / 200 | `int_moving_averages` | Mean close over that many trading-day rows |
+| Average volume 20 / 90 | `int_moving_averages` | Mean volume over that many rows |
+| Relative volume | `int_moving_averages` | Volume divided by the mean of the previous 20 rows |
+| 52-week high / low | `int_moving_averages` | Max and min close over 252 rows |
+| Price position (52w) | `int_moving_averages` | 0 at the 52-week low, 1 at the high |
+| Realized volatility 20 / 60 | `int_volatility` | Standard deviation of log returns × √252 |
+| Macro columns | `int_macro_context` | FRED series pivoted wide and forward-filled to each trading date |
+| Real yield 10y | `int_macro_context` | 10-year Treasury yield minus 10-year breakeven inflation |
+
+FRED series arrive at daily, monthly and quarterly frequency. `int_macro_context` carries the last published value forward with `last_value(... ignore nulls)`, so every trading date has a value for every series. A monthly rate published on the first of the month is treated as still in force on the fifteenth.
+
+Marts are tables:
 
 ```
                     ┌──────────────────┐
@@ -127,313 +187,123 @@ This is a portfolio project built to show data engineering fundamentals across t
                     └───────────────────────────────────────┘
 ```
 
----
+`fct_daily_trading` has one row per ticker per trading day. It also carries the forward-filled macro columns and a denormalised `company_name`, `sector` and `industry`, which is what the dashboard queries read. The foreign keys are checked by dbt tests and are not database constraints. `dim_date` is a fixed calendar generated by `dbt_utils.date_spine` from 2020-01-01 up to 2028-01-01, with an `is_trading_day` flag set from the price data. It contains adapter-specific branches because DuckDB and BigQuery disagree on day-of-week numbering and date formatting functions.
 
-## Project Structure
+### Dagster
+
+`orchestrate/` defines nine assets in a single chain:
 
 ```
-data-engineer-finance-analytics/
-│
-├── extract/                     # E — Extraction layer
-│   ├── stock_prices.py          # yfinance: OHLCV prices + company metadata
-│   └── economic_indicators.py   # FRED: 6 macroeconomic series
-│
-├── load/                        # L — Loading layer
-│   └── loader.py                # Parquet → DuckDB raw schema
-│
-├── transform/                   # T — dbt project
-│   ├── models/
-│   │   ├── staging/             # 1:1 clean copies of raw sources
-│   │   ├── intermediate/        # Business logic (returns, MAs, volatility, macro)
-│   │   └── marts/               # Star schema (fact + dimensions)
-│   ├── macros/                  # Reusable SQL (CAGR, Sharpe, drawdown)
-│   ├── seeds/                   # S&P 500 company reference list
-│   └── tests/                   # 8 custom data quality tests
-│
-├── orchestrate/                 # Dagster pipeline definitions
-│   ├── assets.py                # 8 software-defined assets
-│   ├── jobs.py                  # full_pipeline / ingest_only / transform_only
-│   ├── schedules.py             # Weekday + weekend cron schedules
-│   └── definitions.py           # Dagster entry point
-│
-├── dashboard/                   # Evidence BI dashboard
-│   ├── pages/
-│   │   ├── index.md             # Overview: KPIs, 52W returns, sector table
-│   │   ├── briefing.md          # AI Market Briefing (Gemini-generated)
-│   │   ├── stocks/index.md      # Stock deep dive with ticker dropdown
-│   │   └── macro/index.md       # FRED indicators + rate regime analysis
-│   ├── sources/finance/         # SQL queries against DuckDB/BigQuery
-│   ├── tests/                   # Playwright smoke tests for the dashboard UI
-│   │   └── dashboard.spec.js
-│   └── playwright.config.js
-│
-├── generate_briefing.py         # AI briefing generator (Gemini 2.5 Flash)
-├── briefing_checks.py           # Grounding checks — verifies the briefing against the data
-│
-├── tests/                       # Python unit tests (pytest)
-│   ├── test_extraction.py
-│   └── test_loading.py
-│
-├── data/                        # Local data lake (gitignored)
-│   ├── raw/                     # Extracted Parquet files
-│   └── processed/               # DuckDB database file
-│
-└── main.py                      # CLI: run full pipeline or individual steps
+raw_stock_prices ────────┐
+raw_company_info ────────┼─▶ raw_tables ─▶ dbt_seeds ─▶ dbt_staging ─▶ dbt_intermediate ─▶ dbt_marts ─▶ dbt_tests
+raw_economic_indicators ─┘
 ```
 
----
+Each dbt asset runs one layer through dbt's Python API (`dbtRunner`) and attaches the dbt output to the materialization as metadata. There are three jobs: `full_pipeline`, `ingest_only` (extract and load) and `transform_only` (the dbt assets).
 
-## Data Sources
-
-### Yahoo Finance (via `yfinance`)
-No API key required. Provides 2 years of daily OHLCV prices and company metadata for 10 S&P 500 stocks.
-
-### FRED — Federal Reserve Bank of St. Louis
-Free API key required (2-minute signup at [fred.stlouisfed.org](https://fred.stlouisfed.org/docs/api/api_key.html)).
-
-| Series | ID | Frequency |
+| Schedule | Cron (UTC) | Job |
 |---|---|---|
-| Federal Funds Rate | `FEDFUNDS` | Monthly |
-| Consumer Price Index | `CPIAUCSL` | Monthly |
-| Unemployment Rate | `UNRATE` | Monthly |
-| 10-Year Treasury Yield | `DGS10` | Daily |
-| Real GDP Growth Rate | `A191RL1Q225SBEA` | Quarterly |
-| 10-Year Breakeven Inflation | `T10YIE` | Daily |
+| `daily_pipeline_schedule` | `0 23 * * 1-5` (23:00, Monday to Friday) | `full_pipeline` |
+| `weekly_transform_schedule` | `0 8 * * 6` (08:00, Saturday) | `transform_only` |
 
-Mixed frequencies are forward-filled in `int_macro_context` so every trading day has a macro snapshot.
+The schedules run only while a Dagster instance is running and after they have been switched on in the UI. The published dashboard is refreshed by GitHub Actions, not by Dagster.
 
----
+### Dashboard
 
-## Setup
+`dashboard/` is an [Evidence](https://evidence.dev) project: Markdown pages with embedded SQL, built to a static site. The queries in `dashboard/sources/finance/` read `fct_daily_trading`.
 
-**Prerequisites:** Python 3.11+ and [uv](https://docs.astral.sh/uv/) installed.
-
-```bash
-# 1. Clone and enter the project
-git clone <your-repo>
-cd data-engineer-finance-analytics
-
-# 2. Create the virtual environment and install dependencies
-uv sync
-
-# 3. Install dbt packages
-cd transform && dbt deps && cd ..
-
-# 4. Add your FRED API key
-copy .env.example .env   # then open .env and replace your_key_here with your key
-```
-
----
-
-## Running the Pipeline
-
-### Option A — CLI (simplest)
-
-```bash
-# Full pipeline: Extract → Load → Transform
-uv run python main.py
-
-# Or run individual steps
-uv run python main.py extract
-uv run python main.py load
-uv run python main.py transform
-```
-
-### Option B — Dagster UI (recommended)
-
-```bash
-uv run dagster dev -m orchestrate -p 3001
-# Opens http://localhost:3001
-```
-
-In the UI you can:
-- See the full asset lineage graph
-- Click any asset and hit **Materialize**
-- Inspect logs and row-count metadata per run
-- Toggle schedules on/off
-- Re-run failed steps without re-running the whole pipeline
-
-### Option C — dbt directly
-
-```bash
-cd transform
-
-# Run all models
-dbt run --profiles-dir .
-
-# Run tests
-dbt test --profiles-dir .
-
-# Generate and serve documentation
-dbt docs generate --profiles-dir .
-dbt docs serve --profiles-dir .
-```
-
-### Option D — Evidence Dashboard
-
-```bash
-cd dashboard
-npm run sources   # query DuckDB and cache results
-npm run dev       # opens http://localhost:3000
-```
-
-Pages:
-- **`/`** — Overview: daily KPIs, 52-week return bar chart, sector table
-- **`/briefing`** — AI Market Briefing: Gemini-generated daily commentary on movers, macro, risks
-- **`/stocks`** — Stock deep dive: price + SMA chart, volume, returns, volatility (ticker dropdown)
-- **`/macro`** — FRED indicators: rates, CPI, unemployment, rate regime analysis
-
----
-
-The pipeline includes **8 custom SQL tests** plus schema tests on every model:
-
-| Test | What It Catches |
+| Page | Contents |
 |---|---|
-| `assert_valid_ohlc` | Prices ≤ 0, or high < low (corrupt data) |
-| `assert_positive_volume` | Zero or negative trading volume |
-| `assert_reasonable_daily_return` | Single-day return > ±75% (data error) |
-| `assert_reasonable_volatility` | Annualized vol < 1% or > 500% |
-| `assert_no_large_date_gaps` | Missing trading days (> 7 calendar day gap) |
-| `assert_sufficient_history` | Tickers with < 200 days (SMA-200 unusable) |
-| `assert_fct_tickers_in_dim_company` | Fact rows with no matching company dimension |
-| `assert_fct_dates_in_dim_date` | Fact dates outside the date dimension range |
+| `/` | Daily summary tiles, 52-week return by ticker, latest snapshot table, sector table |
+| `/briefing` | The generated market briefing |
+| `/stocks` | Per-ticker price with 30-day and 200-day SMA, volume, daily and monthly returns, volatility |
+| `/macro` | Rates, unemployment, CPI, returns grouped by Fed Funds rate band, yield against volatility |
 
-Source freshness is also monitored — dbt will warn if data is older than 25 hours and error at 49 hours.
+### GitHub Actions
 
----
-
-## Grounding the AI Briefing
-
-The briefing is written by a language model and published to a dashboard, which means
-a hallucinated number would go out as fact. Data quality tests protect the warehouse;
-these protect the prose.
-
-The key point is that **no second model call is needed to check the first one**. The
-briefing is generated from a structured metrics dict, so that dict *is* the ground
-truth, already in memory. Verification is therefore deterministic, free, and offline —
-no judge model, no labelled dataset.
-
-Three checks run on every generated briefing (`briefing_checks.py`):
-
-| Check | What It Catches |
-|---|---|
-| **Numeric grounding** | A figure that traces to nothing the model was given — a fabricated price, return, or rate |
-| **Superlatives** | Naming the wrong top gainer or worst performer |
-| **Direction** | Saying a ticker rose when it fell |
-
-Figures are matched at the precision they are written, so "up 2.1%" is accepted for a
-true value of 2.145% while 7.8% is not. Rate spreads are accepted in points or basis
-points, since that is the one derivation an analyst always writes.
-
-**When a check fails**, the briefing is sent back to the model once with the specific
-violations named, which fixes most of them. If the second attempt also fails, a
-deterministic briefing built straight from the warehouse is published instead, with a
-banner saying so — the dashboard stays current without carrying a claim the data does
-not support. `--strict` fails the build rather than falling back.
-
-Two limits worth stating plainly. These checks verify *grounding*, not quality: a
-briefing can pass every check and still be bland or draw a weak conclusion. And a claim
-made without numbers ("sentiment is deteriorating") is not checkable this way. The
-tuning surface is the label list — phrases like "52-week high" contain digits that are
-names rather than claims, and an unlisted one becomes a false positive.
-
----
-
-## Financial Metrics Computed
-
-| Metric | Model | Description |
+| Workflow | Trigger | Steps |
 |---|---|---|
-| Daily return % | `int_daily_returns` | (close − prev_close) / prev_close |
-| Log return % | `int_daily_returns` | ln(close / prev_close) — for statistics |
-| SMA 7 / 30 / 90 / 200d | `int_moving_averages` | Simple moving averages on close price |
-| Relative volume | `int_moving_averages` | Today's volume ÷ 20-day average |
-| 52-week high / low | `int_moving_averages` | Trailing year price range |
-| Price position (52w) | `int_moving_averages` | 0 = at 52w low, 1 = at 52w high |
-| Realized volatility (20d) | `int_volatility` | Annualized stddev of log returns |
-| Overnight gap % | `int_daily_returns` | Open vs previous close |
-| Fed Funds Rate | `int_macro_context` | Prevailing interest rate (FRED) |
-| CPI | `int_macro_context` | Consumer Price Index (FRED) |
-| Treasury Yield 10y | `int_macro_context` | Risk-free rate benchmark (FRED) |
-| Real Yield 10y | `int_macro_context` | Nominal yield minus breakeven inflation |
+| `ci.yml`, job "Lint & Unit Tests" | Push or pull request to `main` | `pytest tests/`, then `dbt deps` and `dbt compile` |
+| `ci.yml`, job "Full Pipeline + dbt Tests" | Push to `main` | Extract, load into DuckDB, `dbt seed`, `dbt run`, `dbt test` |
+| `deploy-dashboard.yml` | Push to `main`, or manual | Generate the briefing from BigQuery, build Evidence against BigQuery, deploy to GitHub Pages, run Playwright against the deployed URL |
+| `refresh-and-deploy.yml` | Manual | Extract, load to BigQuery, `dbt seed`, `run` and `test` on BigQuery, then the same briefing, build, deploy and Playwright steps |
 
-SQL macros for **CAGR**, **Sharpe ratio**, and **max drawdown** are available in `transform/macros/financial_calcs.sql`.
-
----
-
-## Default Tickers
-
-Ten stocks across diverse S&P 500 sectors:
-
-`AAPL` · `MSFT` · `GOOGL` · `AMZN` · `NVDA` · `TSLA` · `JPM` · `JNJ` · `V` · `META`
-
-To change the tickers, edit `DEFAULT_TICKERS` in `extract/stock_prices.py`.
-
----
-
-## Key Concepts Practiced
-
-- **ELT vs ETL** — raw data lands in the warehouse first; transformations are version-controlled SQL
-- **Idempotency** — every load uses `CREATE OR REPLACE`; running twice produces the same result
-- **Layered dbt models** — staging (rename/clean) → intermediate (business logic) → marts (analytical output)
-- **Surrogate keys** — `dbt_utils.generate_surrogate_key` for grain-safe joins
-- **Window functions** — `LAG`, `AVG OVER`, `STDDEV OVER` for time-series calculations
-- **Data contracts** — explicit column types on source tables catch schema drift early
-- **Software-defined assets** — Dagster tracks *what* was computed and *when*, enabling precise reruns
-- **CI/CD** — GitHub Actions runs tests automatically; no broken code merges to main
-- **LLM grounding** — model output is verified against its own inputs, retried with the failures, then withheld rather than published unverified
-
----
-
-## CI / GitHub Actions
-
-The pipeline includes three GitHub Actions workflows:
-
-| Workflow | Triggers on | What it does |
-|---|---|---|
-| **CI** (`ci.yml`) — Lint & Unit Tests | Every PR and push | `pytest tests/` + `dbt compile` (syntax check, no data needed) |
-| **CI** (`ci.yml`) — Full Pipeline | Push to `main` only | Full extract → load → `dbt seed` → `dbt run` → `dbt test` (DuckDB) |
-| **CI** (`ci.yml`) — Dashboard Tests | Push to `main` only | Builds Evidence against DuckDB → runs Playwright smoke tests against the static site |
-| **Deploy Dashboard** (`deploy-dashboard.yml`) | Push to `main` | Queries existing BigQuery data → builds Evidence static site → deploys to GitHub Pages |
-| **Refresh Data & Deploy** (`refresh-and-deploy.yml`) | Manual trigger only | Full ELT to BigQuery → AI briefing → builds and deploys dashboard |
-
-To enable:
-1. Add these secrets in **Repository → Settings → Secrets and variables → Actions**:
+The full-pipeline job is skipped on pull requests so that they do not call the FRED API. The workflows read four repository secrets:
 
 | Secret | Value |
 |---|---|
-| `FRED_API_KEY` | Your FRED API key |
-| `BQ_PROJECT` | Your GCP project ID (e.g. `finance-analytics-500020`) |
-| `GOOGLE_CREDENTIALS` | The full **contents** of your service account JSON key file |
-| `GEMINI_API_KEY` | Google AI Studio API key (free at [aistudio.google.com](https://aistudio.google.com)) |
+| `FRED_API_KEY` | FRED API key |
+| `BQ_PROJECT` | GCP project ID |
+| `GOOGLE_CREDENTIALS` | Contents of a service account JSON key with BigQuery Data Editor and BigQuery Job User roles |
+| `GEMINI_API_KEY` | Google AI Studio API key |
 
-2. Enable GitHub Pages: **Repository → Settings → Pages → Source → GitHub Actions**
+GitHub Pages must be set to deploy from GitHub Actions.
 
----
+## The briefing and its checks
 
-## BigQuery Migration Guide
+`generate_briefing.py` queries the latest trading day from `fct_daily_trading`, builds a prompt containing each ticker's close, daily return, 20-day volatility and 52-week position, the sector averages, six macro values and the 52-week best and worst performers, and sends it to `gemini-2.5-flash`.
 
-The pipeline switches between DuckDB and BigQuery via a single environment variable — no code changes needed.
+The response is then checked by `briefing_checks.py` against the same metrics dict the prompt was built from. Because the inputs are already in memory, the check needs no second model call and no labelled data. It is three deterministic functions over the generated text:
 
-**Step 1 — Set `TARGET=bigquery` in `.env`:**
-```bash
-TARGET=bigquery
-BQ_PROJECT=your-gcp-project-id
-BQ_KEYFILE=/path/to/service-account.json
-```
-
-**Step 2 — Run the pipeline normally:**
-```bash
-python main.py           # CLI: routes to BigQuery automatically
-# or via Dagster UI — the raw_tables asset detects TARGET and loads to BigQuery
-```
-
-dbt picks up `TARGET` → sets `DBT_TARGET=bigquery` → uses the `bigquery` output in `transform/profiles.yml`. All 10 models and 55 tests run unchanged on BigQuery.
-
-**Datasets created automatically:**
-| Dataset | Contents |
+| Check | Rule |
 |---|---|
-| `raw` | Raw tables loaded from Parquet |
-| `finance_staging` | dbt staging models |
-| `finance_intermediate` | dbt intermediate models |
-| `finance_marts` | dbt mart tables (fact + dimensions) |
+| Numeric grounding | Every number in the text must equal some value the prompt contained, at the precision it is written. "2.1%" is accepted for a source value of 2.145. |
+| Superlatives | A sentence that contains a phrase such as "top gainer" or "worst performer" and names a ticker must name the ticker that is the actual extreme, by daily return or by 52-week return. |
+| Direction | A sentence that names exactly one ticker and uses only rising words or only falling words must agree with the sign of that ticker's daily return. |
 
+The set of accepted values is built from the columns the prompt shows, not from every column queried, so a figure counts as grounded only if the model could have read it. The set also includes absolute values (so "fell 1.23%" matches −1.23), the counts of tickers, gainers, losers and sectors, and the difference between each pair of macro rates in points and in basis points. No other derived figure is accepted. Dates, list numbering and labels such as "52-week" or "10-year" are stripped before numbers are extracted.
+
+If any check fails, the prompt is sent once more with the violations listed. There is one retry and no loop: each attempt costs a call, and a second failure after the specific figures were named is unlikely to be fixed by a third. If the retry also fails, the script writes a briefing rendered directly from the metrics, with a warning banner saying the model's version was withheld. With `--strict` it exits non-zero and writes nothing. The deploy workflows do not pass `--strict`.
+
+### What the checks do not catch
+
+- A number is matched against one pooled set of values. It is not tied to a ticker or a metric. A correct figure attached to the wrong company, or a volatility figure described as a return, passes.
+- A whole number is accepted if any source value lies within 0.5 of it. Integers from 1900 to 2100 are treated as years and skipped.
+- The superlative check passes when the correct ticker appears anywhere in the sentence. It does not look at company names without a ticker, at sectors, or at superlatives about anything other than return.
+- The direction check skips sentences with two or more tickers and sentences that mix rising and falling words. It always compares against the daily return, including in sentences about the 52-week period. Statements about the direction of rates or other macro series are not checked, and the data holds only one day of macro values to check them against.
+- A claim made without digits ("sentiment is deteriorating") is not checked, and neither is any interpretation or forecast. A response with no figures passes.
+- The checks also reject some true statements: a derived figure other than a rate spread, a numeric range written with a hyphen, or a label that is missing from `_LABEL_PATTERNS` (for example "52 weeks").
+
+The checks establish that the figures in the briefing came from the data. They say nothing about whether the analysis is sound.
+
+## Testing
+
+`pytest tests/` runs 39 tests with no network access or credentials:
+
+- `tests/test_briefing_checks.py` (29) covers fact collection, number extraction, each of the three checks, and that the fallback briefing passes its own checks.
+- `tests/test_loading.py` (8) loads small Parquet fixtures into a temporary DuckDB file and checks tables, row counts and that a second load does not duplicate rows.
+- `tests/test_extraction.py` (2) checks the default ticker list.
+
+The extract modules, the BigQuery loader and the generate, retry and fallback flow in `generate_briefing.py` have no unit tests. They are exercised by the CI pipeline job and the deploy workflows.
+
+`dbt test` runs 55 tests: 47 `unique` and `not_null` tests declared in the model, source and seed YAML files, and 8 SQL tests in `transform/tests/`:
+
+| Test | Fails when |
+|---|---|
+| `assert_valid_ohlc` | Any OHLC price is ≤ 0, high is below open, close or low, or low is above open or close |
+| `assert_positive_volume` | A raw price row has volume ≤ 0 |
+| `assert_reasonable_daily_return` | A daily return exceeds ±75% |
+| `assert_reasonable_volatility` | 20-day annualized volatility is below 0.1% or above 500% |
+| `assert_no_large_date_gaps` | Consecutive trading dates for a ticker are more than 7 calendar days apart |
+| `assert_sufficient_history` | A ticker has fewer than 200 trading days |
+| `assert_fct_tickers_in_dim_company` | A fact row's ticker has no company row |
+| `assert_fct_dates_in_dim_date` | A fact row's date is missing from `dim_date` |
+
+`assert_positive_volume` reads the raw table because the staging model filters those rows out.
+
+`dashboard/tests/dashboard.spec.js` holds 11 Playwright smoke tests that check each page renders its headings, metric tiles and at least one table cell. They assert on headings and not on chart contents, because the charts do not reliably render in headless Chrome. The deploy workflows run them against the published site after each deployment.
+
+## Limitations
+
+- BigQuery is refreshed only when the "Refresh Data & Deploy Dashboard" workflow is triggered by hand. A push to `main` rebuilds the dashboard and regenerates the briefing from whatever data is already there. The as-of date is shown at the top of the overview page and in the briefing banner.
+- Source freshness thresholds are declared in `transform/models/staging/_staging.yml` (warn at 25 hours and error at 49 hours for prices and company data, 40 and 60 days for FRED), but no workflow, job or script runs `dbt source freshness`.
+- The `data_type` entries on the source tables are documentation. Nothing enforces them.
+- Rolling windows have no minimum row count. The first 199 rows of `sma_200d` for a ticker are averages over fewer than 200 days, and the same applies to the other windows.
+- The ticker list is configured in one place, but `generate_briefing.py` reads the macro values from the `AAPL` row and writes "/10" into the prompt, and the overview page says "10 S&P 500 stocks". Changing the tickers means editing those too.
+- A ticker or FRED series that fails to download is logged and skipped. The run continues with the rest.
+- The macros in `transform/macros/financial_calcs.sql` (CAGR, Sharpe ratio, max drawdown, percentage change) and the `sp500_companies` seed are not referenced by any model.
+- `yfinance` is an unofficial client for Yahoo Finance and can break when Yahoo changes its site.
+
+## Data attribution
+
+Price and company data come from Yahoo Finance through [yfinance](https://github.com/ranaroussi/yfinance). Macroeconomic series come from FRED, Federal Reserve Bank of St. Louis.
