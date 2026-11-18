@@ -1,5 +1,5 @@
 -- Dimension table: Calendar / date spine
--- Grain: One row per calendar day from the earliest to latest trading date in the dataset
+-- Grain: One row per calendar day in a fixed range, 2020-01-01 up to 2028-01-01
 -- Provides rich date attributes for time-series analysis
 -- Compatible with DuckDB (local) and BigQuery (cloud).
 

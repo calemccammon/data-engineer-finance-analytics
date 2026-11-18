@@ -5,19 +5,23 @@ published to the dashboard. That dict is the ground truth, and it is already in
 memory at generation time -- so the briefing can be checked against it without a
 second model call, without a judge, and without a labelled dataset.
 
-Three deterministic checks run over the generated markdown:
+Four deterministic checks run over the generated markdown:
 
 1. Numeric grounding -- every figure in the prose must trace back to a number the
    model was actually given (or to one of a small set of derivations an analyst
    would reasonably compute). An unmatched figure is a fabricated one.
-2. Superlatives -- if the text names a top gainer or worst performer, that ticker
+2. Attribution -- in a sentence about a single ticker, a figure must be one of
+   that ticker's own values or a market-wide one, not another ticker's.
+3. Superlatives -- if the text names a top gainer or worst performer, that ticker
    must actually be the extreme.
-3. Direction -- if the text says a ticker rose or fell, the sign must agree.
+4. Direction -- if the text says a ticker rose or fell, the sign must agree.
 
-What this does NOT do: judge whether the analysis is any good, or catch a wrong
-claim stated without numbers ("sentiment is deteriorating"). It catches the
-failure mode that matters most for a page published under someone's name --
-stating a number or a direction that the data does not support.
+An empty response fails outright.
+
+What this does NOT do: judge whether the analysis is any good, catch a wrong
+claim stated without numbers ("sentiment is deteriorating"), or tell which of a
+ticker's own metrics a figure belongs to (a volatility quoted as a return
+passes). It establishes that the figures in the text came from the data.
 """
 
 import re
@@ -212,6 +216,91 @@ def check_numbers(text: str, facts: set[float]) -> tuple[list[Violation], int]:
 
 # ── Claim checks ──────────────────────────────────────────────────────────────
 
+_TICKER_KEYS = ("close_price", "daily_return_pct", "vol_20d_pct", "position_52w_pct")
+
+
+def _own_facts(data: dict, ticker: str) -> set[float]:
+    """The figures the prompt showed for one ticker, with their magnitudes."""
+    values = []
+    for row in data.get("daily") or []:
+        if str(row.get("ticker")) == ticker:
+            values += [row.get(key) for key in _TICKER_KEYS]
+    for row in data.get("performance_52w") or []:
+        if str(row.get("ticker")) == ticker:
+            values.append(row.get("return_52w_pct"))
+
+    facts: set[float] = set()
+    for value in values:
+        if value is None or isinstance(value, bool):
+            continue
+        try:
+            number = float(value)
+        except (TypeError, ValueError):
+            continue
+        facts.add(number)
+        facts.add(abs(number))
+    return facts
+
+
+def _shared_facts(data: dict) -> set[float]:
+    """Figures that belong to no single ticker: sectors, macro, spreads, counts."""
+    daily = data.get("daily") or []
+    facts = collect_facts({**data, "daily": [], "performance_52w": []})
+    gainers = sum(1 for row in daily if (row.get("daily_return_pct") or 0) > 0)
+    losers = sum(1 for row in daily if (row.get("daily_return_pct") or 0) < 0)
+    for count in (len(daily), gainers, losers):
+        facts.add(float(count))
+    return facts
+
+
+def _company_words(data: dict) -> dict[str, str]:
+    """Ticker -> first word of its company name, lower-cased ('NVDA' -> 'nvidia')."""
+    words: dict[str, str] = {}
+    for row in data.get("daily") or []:
+        found = re.findall(r"[A-Za-z]+", str(row.get("company_name") or ""))
+        if row.get("ticker") and found:
+            words[str(row["ticker"])] = found[0].lower()
+    return words
+
+
+def check_attribution(text: str, data: dict) -> list[Violation]:
+    """A figure in a sentence about one ticker must not be another ticker's.
+
+    Only sentences that name exactly one ticker symbol, and no other tracked
+    company by name, are checked. A figure that matches nothing at all is left
+    to check_numbers, so it is reported once.
+    """
+    daily = data.get("daily") or []
+    known = {str(r["ticker"]) for r in daily if r.get("ticker")}
+    if not known:
+        return []
+
+    pooled = collect_facts(data)
+    shared = _shared_facts(data)
+    company_words = _company_words(data)
+
+    violations: list[Violation] = []
+    for sentence in _sentences(text):
+        mentioned = _tickers_in(sentence, known)
+        if len(mentioned) != 1:
+            continue
+        ticker = mentioned[0]
+        words = _words(sentence)
+        if any(word in words for other, word in company_words.items() if other != ticker):
+            continue
+
+        allowed = _own_facts(data, ticker) | shared
+        for value, decimals, raw in extract_numbers(sentence):
+            if decimals == 0 and 1900 <= value <= 2100:
+                continue
+            if _is_grounded(value, decimals, pooled) and not _is_grounded(value, decimals, allowed):
+                violations.append(Violation(
+                    "misattributed_number",
+                    f"{raw!r} is not one of {ticker}'s figures: {sentence[:120]!r}",
+                ))
+    return violations
+
+
 def _sentences(text: str) -> list[str]:
     plain = re.sub(r"[*_`#>]", " ", text)
     return [s.strip() for s in re.split(r"(?<=[.!?])\s+|\n+", plain) if s.strip()]
@@ -303,9 +392,19 @@ def check_directions(text: str, data: dict) -> list[Violation]:
 
 def check_briefing(text: str, data: dict) -> CheckResult:
     """Run every check against the generated briefing."""
+    if not text or not text.strip():
+        return CheckResult(
+            violations=[Violation("empty_briefing", "the model returned no text")],
+            numbers_checked=0,
+        )
     number_violations, counted = check_numbers(text, collect_facts(data))
     return CheckResult(
-        violations=number_violations + check_superlatives(text, data) + check_directions(text, data),
+        violations=(
+            number_violations
+            + check_attribution(text, data)
+            + check_superlatives(text, data)
+            + check_directions(text, data)
+        ),
         numbers_checked=counted,
     )
 

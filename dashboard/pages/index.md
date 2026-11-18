@@ -26,7 +26,7 @@ from finance.latest_snapshot
 
 # Finance Analytics Dashboard
 
-**As of {market_summary[0].as_of_date}** &nbsp;|&nbsp; 10 S&P 500 stocks · Real market data via Yahoo Finance & FRED
+**As of {market_summary[0].as_of_date}** &nbsp;|&nbsp; {market_summary[0].num_stocks} S&P 500 stocks · Real market data via Yahoo Finance & FRED
 
 <BigValue data={market_summary} value=avg_daily_return title="Avg Daily Return %" fmt="+0.000%;-0.000%" />
 <BigValue data={market_summary} value=gainers title="Gainers Today" />

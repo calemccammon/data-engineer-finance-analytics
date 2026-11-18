@@ -3,7 +3,7 @@ version: 2
 sources:
   - name: raw
     schema: raw
-    description: "Raw data loaded from Yahoo Finance API"
+    description: "Raw data loaded from Yahoo Finance and FRED"
     # Freshness: warn if data is >25 hours old, error if >49 hours old.
     # This catches a missed daily pipeline run before downstream consumers notice.
     freshness:

@@ -6,6 +6,7 @@ the original data for downstream dbt transformations.
 """
 
 import logging
+import os
 from pathlib import Path
 
 import duckdb
@@ -14,6 +15,15 @@ logger = logging.getLogger(__name__)
 
 DEFAULT_RAW_DIR = Path("data/raw")
 DEFAULT_DB_PATH = Path("data/processed/finance.duckdb")
+
+
+def default_db_path() -> Path:
+    """The DuckDB file to use: FINANCE_DB_PATH if set, else DEFAULT_DB_PATH.
+
+    dbt reads the same variable (transform/profiles.yml), so the loader and dbt
+    always agree on the file.
+    """
+    return Path(os.environ.get("FINANCE_DB_PATH") or DEFAULT_DB_PATH)
 
 
 def load_to_duckdb(
@@ -28,13 +38,14 @@ def load_to_duckdb(
 
     Args:
         raw_dir: Directory containing raw Parquet files. Defaults to data/raw/.
-        db_path: Path to DuckDB database file. Defaults to data/processed/finance.duckdb.
+        db_path: Path to DuckDB database file. Defaults to FINANCE_DB_PATH,
+            or data/processed/finance.duckdb if that is not set.
 
     Returns:
         List of table names that were loaded.
     """
     raw_dir = raw_dir or DEFAULT_RAW_DIR
-    db_path = db_path or DEFAULT_DB_PATH
+    db_path = db_path or default_db_path()
     db_path.parent.mkdir(parents=True, exist_ok=True)
 
     con = duckdb.connect(str(db_path))
@@ -111,7 +122,7 @@ def load_to_duckdb(
 
 def verify_load(db_path: Path | None = None) -> None:
     """Print a summary of all tables in the raw schema for verification."""
-    db_path = db_path or DEFAULT_DB_PATH
+    db_path = db_path or default_db_path()
     con = duckdb.connect(str(db_path))
 
     try:

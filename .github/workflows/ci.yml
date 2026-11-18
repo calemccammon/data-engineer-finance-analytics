@@ -12,7 +12,7 @@ env:
 jobs:
   # ── Job 1: always runs — no external deps required ──────────────────────────
   lint-and-unit-tests:
-    name: Lint & Unit Tests
+    name: Unit Tests & dbt Compile
     runs-on: ubuntu-latest
 
     steps:

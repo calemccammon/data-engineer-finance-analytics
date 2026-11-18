@@ -1,5 +1,5 @@
 {
-  "name": "my-evidence-project",
+  "name": "finance-analytics-dashboard",
   "version": "0.0.1",
   "scripts": {
     "build": "evidence build",
