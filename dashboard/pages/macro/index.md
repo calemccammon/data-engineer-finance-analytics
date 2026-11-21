@@ -113,4 +113,4 @@ How did the 10 tracked stocks perform during different Federal Funds Rate enviro
 
 > **Data source:** Federal Reserve Bank of St. Louis (FRED API).
 > Series: `FEDFUNDS`, `CPIAUCSL`, `UNRATE`, `DGS10`, `T10YIE`, `A191RL1Q225SBEA`.
-> Mixed frequencies forward-filled to daily trading dates.
+> Each trading date shows the latest figure published by then.
