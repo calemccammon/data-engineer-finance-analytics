@@ -64,10 +64,15 @@ models:
 
   - name: int_macro_context
     description: |
-      Daily macro context derived from FRED economic indicators.
-      Mixed-frequency FRED data (daily/monthly/quarterly) is forward-filled
-      to produce one row per trading date, ready to join to fct_daily_trading.
-      Grain: one row per calendar date present in stg_stock_prices.
+      Macro context for each trading date, from FRED economic indicators.
+      Each observation is moved to the date it was published (see
+      fred_release_lag_days in dbt_project.yml), and each trading date takes
+      the latest value published by then. Ready to join to fct_daily_trading.
+      Grain: one row per trading date present in stg_stock_prices.
+
+      The columns are tested not_null: five years of FRED history are loaded
+      against two years of prices, so every series has a published value by
+      the first trading date. A null means a series failed to load.
     columns:
       - name: calendar_date
         description: "Trading date (FK to fct_daily_trading.trading_date)"
@@ -75,17 +80,29 @@ models:
           - unique
           - not_null
       - name: fed_funds_rate
-        description: "Federal Funds Effective Rate (%)"
+        description: "Federal Funds Effective Rate (%), latest monthly average published by this date"
+        tests:
+          - not_null
       - name: cpi
-        description: "Consumer Price Index, All Urban Consumers"
+        description: "Consumer Price Index, All Urban Consumers, latest month published by this date"
+        tests:
+          - not_null
       - name: unemployment_rate
-        description: "Civilian Unemployment Rate (%)"
+        description: "Civilian Unemployment Rate (%), latest month published by this date"
+        tests:
+          - not_null
       - name: treasury_yield_10y
-        description: "10-Year Treasury Constant Maturity Rate (%)"
+        description: "10-Year Treasury Constant Maturity Rate (%), latest daily value"
+        tests:
+          - not_null
       - name: gdp_growth_rate
-        description: "Real GDP Growth Rate (%, quarterly, forward-filled to daily)"
+        description: "Real GDP Growth Rate (%), latest quarter published by this date"
+        tests:
+          - not_null
       - name: breakeven_inflation_10y
-        description: "10-Year Breakeven Inflation Rate (%)"
+        description: "10-Year Breakeven Inflation Rate (%), latest daily value"
+        tests:
+          - not_null
       - name: real_yield_10y
         description: "Real 10-Year yield: treasury_yield_10y minus breakeven_inflation_10y"
 

@@ -149,10 +149,14 @@ Intermediate models are views that hold the calculations:
 | 52-week high / low | `int_moving_averages` | Max and min close over 252 rows |
 | Price position (52w) | `int_moving_averages` | 0 at the 52-week low, 1 at the high |
 | Realized volatility 20 / 60 | `int_volatility` | Standard deviation of log returns × √252 |
-| Macro columns | `int_macro_context` | FRED series pivoted wide and forward-filled to each trading date |
+| Macro columns | `int_macro_context` | FRED series pivoted wide; each trading date takes the latest value published by then |
 | Real yield 10y | `int_macro_context` | 10-year Treasury yield minus 10-year breakeven inflation |
 
-FRED series arrive at daily, monthly and quarterly frequency. `int_macro_context` carries the last published value forward with `last_value(... ignore nulls)`, so every trading date has a value for every series. A monthly rate published on the first of the month is treated as still in force on the fifteenth.
+FRED series arrive at daily, monthly and quarterly frequency, and a monthly or quarterly figure is dated the first day of the period it describes, not the day it came out. `int_macro_context` moves each observation to the date it was published and gives each trading date the latest value published by then, carried forward with `last_value(... ignore nulls)`.
+
+- **No figure is used before it was public.** March's CPI is dated 1 March and is released in mid-April, so it first appears on trading dates in mid-April. The delays are per series, in `fred_release_lag_days` in `transform/dbt_project.yml` (35 days for the Fed Funds rate, 42 for unemployment, 46 for CPI, 123 for GDP, none for the two daily market rates). They are approximate and set a few days late rather than early, because the real release days move with weekends and holidays.
+- **No observation is lost for falling on a day without trading.** The first of a month is often a weekend, and 1 January never trades. Releases and trading dates are laid on one timeline, so an observation does not have to match a trading date to be carried forward.
+- **Every trading date has a value for every series**, because five years of FRED history are loaded against two years of prices. dbt `not_null` tests on the six columns fail if a series is missing.
 
 Marts are tables:
 
@@ -270,15 +274,16 @@ The checks establish that the figures in the briefing came from the data. They s
 
 ## Testing
 
-`pytest tests/` runs 48 tests with no network access or credentials:
+`pytest tests/` runs 57 tests with no credentials. Only `test_macro_context.py` uses the network, to fetch the `dbt_utils` package the first time it runs:
 
 - `tests/test_briefing_checks.py` (37) covers fact collection, number extraction, each of the four checks, the empty response, and that the fallback briefing passes its own checks.
 - `tests/test_loading.py` (9) loads small Parquet fixtures into a temporary DuckDB file and checks tables, row counts, that a second load does not duplicate rows, and that `FINANCE_DB_PATH` is used.
+- `tests/test_macro_context.py` (9) builds `int_macro_context` with dbt from a few hand-written observations in a temporary DuckDB file and checks which figure each trading date sees: none before its release, the new one on the day of its release, and observations dated on a holiday or a weekend kept.
 - `tests/test_extraction.py` (2) checks the default ticker list.
 
 The extract modules, the BigQuery loader and the generate, retry and fallback flow in `generate_briefing.py` have no unit tests. They are exercised by the CI pipeline job and the deploy workflows.
 
-`dbt test` runs 55 tests: 47 `unique` and `not_null` tests declared in the model, source and seed YAML files, and 8 SQL tests in `transform/tests/`:
+`dbt test` runs 61 tests: 53 `unique` and `not_null` tests declared in the model, source and seed YAML files, and 8 SQL tests in `transform/tests/`:
 
 | Test | Fails when |
 |---|---|

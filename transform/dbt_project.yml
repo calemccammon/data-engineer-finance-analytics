@@ -26,3 +26,17 @@ models:
     marts:
       +materialized: table
       +schema: marts
+
+vars:
+  # Days from a FRED observation's date to the day it is published. A monthly
+  # or quarterly figure is dated the first day of its period and released after
+  # the period ends. int_macro_context uses these so that no trading date sees
+  # a figure before it was public. They are set a few days late rather than
+  # early: release days move with weekends and holidays.
+  fred_release_lag_days:
+    FEDFUNDS: 35          # monthly average, out in the first days of the next month
+    UNRATE: 42            # jobs report, usually the first Friday of the next month
+    CPIAUCSL: 46          # around the middle of the next month
+    A191RL1Q225SBEA: 123  # first estimate, about a month after the quarter ends
+    DGS10: 0              # a market rate, known on the day
+    T10YIE: 0             # a market rate, known on the day
